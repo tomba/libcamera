@@ -8,6 +8,7 @@
 #include <libcamera/base/log.h>
 
 #include <libcamera/camera.h>
+#include <libcamera/formats.h>
 
 #include "libcamera/internal/camera.h"
 #include "libcamera/internal/device_enumerator.h"
@@ -78,7 +79,48 @@ public:
 	int queueRequestDevice(Camera *camera, Request *request) override;
 
 	bool match(DeviceEnumerator *enumerator) override;
+
+private:
+	int processControls(VividCameraData *data, Request *request);
+
+	VividCameraData *cameraData(Camera *camera)
+	{
+		return static_cast<VividCameraData *>(camera->_d());
+	}
 };
+
+VividCameraConfiguration::VividCameraConfiguration()
+	: CameraConfiguration()
+{
+}
+
+CameraConfiguration::Status VividCameraConfiguration::validate()
+{
+	Status status = Valid;
+
+	if (config_.empty())
+		return Invalid;
+
+	/* Cap the number of entries to the available streams. */
+	if (config_.size() > 1) {
+		config_.resize(1);
+		status = Adjusted;
+	}
+
+	StreamConfiguration &cfg = config_[0];
+
+	/* Adjust the pixel format. */
+	const std::vector<libcamera::PixelFormat> formats = cfg.formats().pixelformats();
+	if (std::find(formats.begin(), formats.end(), cfg.pixelFormat) == formats.end()) {
+		cfg.pixelFormat = cfg.formats().pixelformats()[0];
+		LOG(VIVID, Debug) << "Adjusting format to " << cfg.pixelFormat.toString();
+		status = Adjusted;
+	}
+
+	cfg.bufferCount = 4;
+
+	return status;
+}
 
 PipelineHandlerVivid::PipelineHandlerVivid(CameraManager *manager)
 	: PipelineHandler(manager)
@@ -88,7 +130,36 @@ PipelineHandlerVivid::PipelineHandlerVivid(CameraManager *manager)
 CameraConfiguration *PipelineHandlerVivid::generateConfiguration(Camera *camera,
 								 const StreamRoles &roles)
 {
-	return nullptr;
+	CameraConfiguration *config = new VividCameraConfiguration();
+	VividCameraData *data = cameraData(camera);
+
+	if (roles.empty())
+		return config;
+
+	std::map<V4L2PixelFormat, std::vector<SizeRange>> v4l2Formats =
+		data->video_->formats();
+	std::map<PixelFormat, std::vector<SizeRange>> deviceFormats;
+	std::transform(v4l2Formats.begin(), v4l2Formats.end(),
+		       std::inserter(deviceFormats, deviceFormats.begin()),
+		       [&](const decltype(v4l2Formats)::value_type &format) {
+			       return decltype(deviceFormats)::value_type{
+				       format.first.toPixelFormat(),
+				       format.second
+			       };
+		       });
+
+	StreamFormats formats(deviceFormats);
+	StreamConfiguration cfg(formats);
+
+	cfg.pixelFormat = formats::BGR888;
+	cfg.size = { 1280, 720 };
+	cfg.bufferCount = 4;
+
+	config->addConfiguration(cfg);
+
+	config->validate();
+
+	return config;
 }
 
 int PipelineHandlerVivid::configure(Camera *camera, CameraConfiguration *config)
