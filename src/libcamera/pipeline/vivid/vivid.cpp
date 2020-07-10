@@ -7,6 +7,7 @@
 
 #include <libcamera/base/log.h>
 
+#include "libcamera/internal/device_enumerator.h"
 #include "libcamera/internal/pipeline_handler.h"
 
 /*
@@ -84,7 +85,16 @@ int PipelineHandlerVivid::queueRequestDevice(Camera *camera, Request *request)
 
 bool PipelineHandlerVivid::match(DeviceEnumerator *enumerator)
 {
-	return false;
+	DeviceMatch dm("vivid");
+	dm.add("vivid-000-vid-cap");
+
+	MediaDevice *media = acquireMediaDevice(enumerator, dm);
+	if (!media)
+		return false;
+
+	LOG(VIVID, Debug) << "Obtained Vivid Device";
+
+	return false; // Prevent infinite loops for now
 }
 
 REGISTER_PIPELINE_HANDLER(PipelineHandlerVivid)
