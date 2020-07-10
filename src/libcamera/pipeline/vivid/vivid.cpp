@@ -7,8 +7,13 @@
 
 #include <libcamera/base/log.h>
 
+#include <libcamera/camera.h>
+
+#include "libcamera/internal/camera.h"
 #include "libcamera/internal/device_enumerator.h"
+#include "libcamera/internal/media_device.h"
 #include "libcamera/internal/pipeline_handler.h"
+#include "libcamera/internal/v4l2_videodevice.h"
 
 /*
  * Explicitly disable the unused-parameter warning in this pipeline handler.
@@ -26,6 +31,34 @@
 namespace libcamera {
 
 LOG_DEFINE_CATEGORY(VIVID)
+
+class VividCameraData : public Camera::Private
+{
+public:
+	VividCameraData(PipelineHandler *pipe, MediaDevice *media)
+		: Camera::Private(pipe), media_(media), video_(nullptr)
+	{
+	}
+
+	~VividCameraData()
+	{
+		delete video_;
+	}
+
+	int init();
+
+	MediaDevice *media_;
+	V4L2VideoDevice *video_;
+	Stream stream_;
+};
+
+class VividCameraConfiguration : public CameraConfiguration
+{
+public:
+	VividCameraConfiguration();
+
+	Status validate() override;
+};
 
 class PipelineHandlerVivid : public PipelineHandler
 {
@@ -92,9 +125,28 @@ bool PipelineHandlerVivid::match(DeviceEnumerator *enumerator)
 	if (!media)
 		return false;
 
-	LOG(VIVID, Debug) << "Obtained Vivid Device";
+	std::unique_ptr<VividCameraData> data = std::make_unique<VividCameraData>(this, media);
 
-	return false; // Prevent infinite loops for now
+	/* Locate and open the capture video node. */
+	if (data->init())
+		return false;
+
+	/* Create and register the camera. */
+	std::set<Stream *> streams{ &data->stream_ };
+	const std::string id = data->video_->deviceName();
+	std::shared_ptr<Camera> camera = Camera::create(std::move(data), id, streams);
+	registerCamera(std::move(camera));
+
+	return true;
+}
+
+int VividCameraData::init()
+{
+	video_ = new V4L2VideoDevice(media_->getEntityByName("vivid-000-vid-cap"));
+	if (video_->open())
+		return -ENODEV;
+
+	return 0;
 }
 
 REGISTER_PIPELINE_HANDLER(PipelineHandlerVivid)
