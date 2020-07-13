@@ -164,7 +164,26 @@ CameraConfiguration *PipelineHandlerVivid::generateConfiguration(Camera *camera,
 
 int PipelineHandlerVivid::configure(Camera *camera, CameraConfiguration *config)
 {
-	return -1;
+	VividCameraData *data = cameraData(camera);
+	StreamConfiguration &cfg = config->at(0);
+	int ret;
+
+	V4L2DeviceFormat format = {};
+	format.fourcc = V4L2PixelFormat::fromPixelFormat(cfg.pixelFormat);
+	format.size = cfg.size;
+
+	ret = data->video_->setFormat(&format);
+	if (ret)
+		return ret;
+
+	if (format.size != cfg.size ||
+	    format.fourcc != V4L2PixelFormat::fromPixelFormat(cfg.pixelFormat))
+		return -EINVAL;
+
+	cfg.setStream(&data->stream_);
+	cfg.stride = format.planes[0].bpl;
+
+	return 0;
 }
 
 int PipelineHandlerVivid::exportFrameBuffers(Camera *camera, Stream *stream,
