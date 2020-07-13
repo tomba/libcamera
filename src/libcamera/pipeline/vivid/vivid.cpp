@@ -5,9 +5,13 @@
  * vivid.cpp - Pipeline handler for the vivid capture device
  */
 
+#include <math.h>
+
 #include <libcamera/base/log.h>
 
 #include <libcamera/camera.h>
+#include <libcamera/control_ids.h>
+#include <libcamera/controls.h>
 #include <libcamera/formats.h>
 
 #include "libcamera/internal/camera.h"
@@ -252,6 +256,46 @@ void PipelineHandlerVivid::stop(Camera *camera)
 	data->video_->releaseBuffers();
 }
 
+int PipelineHandlerVivid::processControls(VividCameraData *data, Request *request)
+{
+	ControlList controls(data->video_->controls());
+
+	for (auto it : request->controls()) {
+		unsigned int id = it.first;
+		unsigned int offset;
+		uint32_t cid;
+
+		if (id == controls::Brightness) {
+			cid = V4L2_CID_BRIGHTNESS;
+			offset = 128;
+		} else if (id == controls::Contrast) {
+			cid = V4L2_CID_CONTRAST;
+			offset = 0;
+		} else if (id == controls::Saturation) {
+			cid = V4L2_CID_SATURATION;
+			offset = 0;
+		} else {
+			continue;
+		}
+
+		int32_t value = lroundf(it.second.get<float>() * 128 + offset);
+		controls.set(cid, std::clamp(value, 0, 255));
+	}
+
+	for (const auto &ctrl : controls)
+		LOG(VIVID, Debug)
+			<< "Setting control " << utils::hex(ctrl.first)
+			<< " to " << ctrl.second.toString();
+
+	int ret = data->video_->setControls(&controls);
+	if (ret) {
+		LOG(VIVID, Error) << "Failed to set controls: " << ret;
+		return ret < 0 ? ret : -EINVAL;
+	}
+
+	return ret;
+}
+
 int PipelineHandlerVivid::queueRequestDevice(Camera *camera, Request *request)
 {
 	VividCameraData *data = cameraData(camera);
@@ -263,7 +307,11 @@ int PipelineHandlerVivid::queueRequestDevice(Camera *camera, Request *request)
 		return -ENOENT;
 	}
 
-	int ret = data->video_->queueBuffer(buffer);
+	int ret = processControls(data, request);
+	if (ret < 0)
+		return ret;
+
+	ret = data->video_->queueBuffer(buffer);
 	if (ret < 0)
 		return ret;
 
@@ -301,6 +349,36 @@ int VividCameraData::init()
 		return -ENODEV;
 
 	video_->bufferReady.connect(this, &VividCameraData::bufferReady);
+
+	/* Initialise the supported controls. */
+	const ControlInfoMap &controls = video_->controls();
+	ControlInfoMap::Map ctrls;
+
+	for (const auto &ctrl : controls) {
+		const ControlId *id;
+		ControlInfo info;
+
+		switch (ctrl.first->id()) {
+		case V4L2_CID_BRIGHTNESS:
+			id = &controls::Brightness;
+			info = ControlInfo{ { -1.0f }, { 1.0f }, { 0.0f } };
+			break;
+		case V4L2_CID_CONTRAST:
+			id = &controls::Contrast;
+			info = ControlInfo{ { 0.0f }, { 2.0f }, { 1.0f } };
+			break;
+		case V4L2_CID_SATURATION:
+			id = &controls::Saturation;
+			info = ControlInfo{ { 0.0f }, { 2.0f }, { 1.0f } };
+			break;
+		default:
+			continue;
+		}
+
+		ctrls.emplace(id, info);
+	}
+
+	controlInfo_ = ControlInfoMap(std::move(ctrls), controls::controls);
 
 	return 0;
 }
