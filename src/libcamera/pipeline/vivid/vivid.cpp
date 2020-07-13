@@ -47,6 +47,7 @@ public:
 	}
 
 	int init();
+	void bufferReady(FrameBuffer *buffer);
 
 	MediaDevice *media_;
 	V4L2VideoDevice *video_;
@@ -189,16 +190,35 @@ int PipelineHandlerVivid::configure(Camera *camera, CameraConfiguration *config)
 int PipelineHandlerVivid::exportFrameBuffers(Camera *camera, Stream *stream,
 					     std::vector<std::unique_ptr<FrameBuffer>> *buffers)
 {
-	return -1;
+	VividCameraData *data = cameraData(camera);
+	unsigned int count = stream->configuration().bufferCount;
+
+	return data->video_->exportBuffers(count, buffers);
 }
 
 int PipelineHandlerVivid::start(Camera *camera, const ControlList *controls)
 {
-	return -1;
+	VividCameraData *data = cameraData(camera);
+	unsigned int count = data->stream_.configuration().bufferCount;
+
+	int ret = data->video_->importBuffers(count);
+	if (ret < 0)
+		return ret;
+
+	ret = data->video_->streamOn();
+	if (ret < 0) {
+		data->video_->releaseBuffers();
+		return ret;
+	}
+
+	return 0;
 }
 
 void PipelineHandlerVivid::stopDevice(Camera *camera)
 {
+	VividCameraData *data = cameraData(camera);
+	data->video_->streamOff();
+	data->video_->releaseBuffers();
 }
 
 int PipelineHandlerVivid::queueRequestDevice(Camera *camera, Request *request)
@@ -236,7 +256,17 @@ int VividCameraData::init()
 	if (video_->open())
 		return -ENODEV;
 
+	video_->bufferReady.connect(this, &VividCameraData::bufferReady);
+
 	return 0;
+}
+
+void VividCameraData::bufferReady(FrameBuffer *buffer)
+{
+	Request *request = buffer->request();
+
+	pipe()->completeBuffer(request, buffer);
+	pipe()->completeRequest(request);
 }
 
 REGISTER_PIPELINE_HANDLER(PipelineHandlerVivid)
