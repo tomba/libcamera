@@ -223,7 +223,20 @@ void PipelineHandlerVivid::stop(Camera *camera)
 
 int PipelineHandlerVivid::queueRequestDevice(Camera *camera, Request *request)
 {
-	return -1;
+	VividCameraData *data = cameraData(camera);
+	FrameBuffer *buffer = request->findBuffer(&data->stream_);
+	if (!buffer) {
+		LOG(VIVID, Error)
+			<< "Attempt to queue request with invalid stream";
+
+		return -ENOENT;
+	}
+
+	int ret = data->video_->queueBuffer(buffer);
+	if (ret < 0)
+		return ret;
+
+	return 0;
 }
 
 bool PipelineHandlerVivid::match(DeviceEnumerator *enumerator)
