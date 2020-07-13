@@ -29,6 +29,18 @@
  */
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
+#define VIVID_CID_VIVID_BASE            (0x00f00000 | 0xf000)
+#define VIVID_CID_VIVID_CLASS           (0x00f00000 | 1)
+#define VIVID_CID_TEST_PATTERN          (VIVID_CID_VIVID_BASE + 0)
+#define VIVID_CID_OSD_TEXT_MODE         (VIVID_CID_VIVID_BASE + 1)
+#define VIVID_CID_HOR_MOVEMENT          (VIVID_CID_VIVID_BASE + 2)
+#define VIVID_CID_VERT_MOVEMENT         (VIVID_CID_VIVID_BASE + 3)
+#define VIVID_CID_SHOW_BORDER           (VIVID_CID_VIVID_BASE + 4)
+#define VIVID_CID_SHOW_SQUARE           (VIVID_CID_VIVID_BASE + 5)
+#define VIVID_CID_INSERT_SAV            (VIVID_CID_VIVID_BASE + 6)
+#define VIVID_CID_INSERT_EAV            (VIVID_CID_VIVID_BASE + 7)
+#define VIVID_CID_VBI_CAP_INTERLACED    (VIVID_CID_VIVID_BASE + 8)
+
 namespace libcamera {
 
 LOG_DEFINE_CATEGORY(VIVID)
@@ -180,6 +192,25 @@ int PipelineHandlerVivid::configure(Camera *camera, CameraConfiguration *config)
 	if (format.size != cfg.size ||
 	    format.fourcc != V4L2PixelFormat::fromPixelFormat(cfg.pixelFormat))
 		return -EINVAL;
+
+	/* Set initial controls specific to VIVID */
+	ControlList controls(data->video_->controls());
+	controls.set(VIVID_CID_TEST_PATTERN, 0); /* Vertical Colour Bars */
+	controls.set(VIVID_CID_OSD_TEXT_MODE, 0); /* Display all OSD */
+
+	/* Ensure clear colours configured. */
+	controls.set(V4L2_CID_BRIGHTNESS, 128);
+	controls.set(V4L2_CID_CONTRAST, 128);
+	controls.set(V4L2_CID_SATURATION, 128);
+
+	/* Enable movement to visualise buffer updates. */
+	controls.set(VIVID_CID_HOR_MOVEMENT, 5);
+
+	ret = data->video_->setControls(&controls);
+	if (ret) {
+		LOG(VIVID, Error) << "Failed to set controls: " << ret;
+		return ret < 0 ? ret : -EINVAL;
+	}
 
 	cfg.setStream(&data->stream_);
 	cfg.stride = format.planes[0].bpl;
