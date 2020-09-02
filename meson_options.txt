@@ -18,11 +18,12 @@ option('cam',
 
 option('documentation',
         type : 'feature',
+        value : 'disabled',
         description : 'Generate the project documentation')
 
 option('gstreamer',
         type : 'feature',
-        value : 'auto',
+        value : 'disabled',
         description : 'Compile libcamera GStreamer plugin')
 
 option('ipas',
@@ -36,6 +37,7 @@ option('lc-compliance',
         description : 'Compile the lc-compliance test application')
 
 option('pipelines',
+        value : ['simple', 'uvcvideo', 'vimc'],
         type : 'array',
         choices : ['ipu3', 'raspberrypi', 'rkisp1', 'simple', 'uvcvideo', 'vimc'],
         description : 'Select which pipeline handlers to include')
@@ -47,11 +49,12 @@ option('qcam',
 
 option('test',
         type : 'boolean',
+	value : 'false',
         description: 'Compile and include the tests')
 
 option('tracing',
         type : 'feature',
-        value : 'auto',
+        value : 'disabled',
         description: 'Enable tracing (based on lttng)')
 
 option('v4l2',
