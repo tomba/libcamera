@@ -95,12 +95,14 @@ libcamera_sources += control_sources
 
 gen_version = meson.source_root() / 'utils' / 'gen-version.sh'
 
-version_cpp = vcs_tag(command : [gen_version, meson.build_root()],
-                      input : 'version.cpp.in',
-                      output : 'version.cpp',
-                      fallback : meson.project_version())
+#version_cpp = vcs_tag(command : [gen_version, meson.build_root()],
+#                      input : 'version.cpp.in',
+#                      output : 'version.cpp',
+#                      fallback : meson.project_version())
+#
+#libcamera_sources += version_cpp
 
-libcamera_sources += version_cpp
+libcamera_sources += files('version_static.cpp')
 
 if ipa_sign_module
     ipa_pub_key_cpp = custom_target('ipa_pub_key_cpp',
