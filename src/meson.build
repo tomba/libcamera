@@ -38,3 +38,4 @@ subdir('qcam')
 
 subdir('gstreamer')
 subdir('v4l2')
+subdir('py')

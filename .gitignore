@@ -4,5 +4,7 @@ meson.build.user
 __pycache__/
 build/
 patches/
+subprojects/packagecache/
+subprojects/pybind11-2.*/
 *.patch
 *.pyc
