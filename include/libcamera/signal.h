@@ -68,6 +68,12 @@ public:
 		SignalBase::connect(new BoundMethodStatic<R, Args...>(func));
 	}
 
+	template<typename R>
+	void connect(std::function<R(Args...)> func)
+	{
+		SignalBase::connect(new BoundMethodFunction<R, Args...>(func));
+	}
+
 	void disconnect()
 	{
 		SignalBase::disconnect([]([[maybe_unused]] SlotList::iterator &iter) {

@@ -11,6 +11,7 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <functional>
 
 namespace libcamera {
 
@@ -226,6 +227,30 @@ public:
 
 private:
 	R (*func_)(Args...);
+};
+
+template<typename R, typename... Args>
+class BoundMethodFunction : public BoundMethodArgs<R, Args...>
+{
+public:
+	BoundMethodFunction(std::function<R(Args...)> func)
+	        : BoundMethodArgs<R, Args...>(nullptr, nullptr, ConnectionTypeAuto),
+	          func_(func)
+	{
+	}
+
+	R activate(Args... args, [[maybe_unused]] bool deleteMethod = false) override
+	{
+		return func_(args...);
+	}
+
+	R invoke(Args...) override
+	{
+		return R();
+	}
+
+private:
+	std::function<R(Args...)> func_;
 };
 
 } /* namespace libcamera */
