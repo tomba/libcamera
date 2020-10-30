@@ -3,3 +3,5 @@
 foreach pipeline : pipelines
     subdir(pipeline)
 endforeach
+
+subdir('vivid')
