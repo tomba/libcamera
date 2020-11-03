@@ -195,8 +195,13 @@ int PipelineHandlerVivid::configure(Camera *camera, CameraConfiguration *config)
 		return ret;
 
 	if (format.size != cfg.size ||
-	    format.fourcc != V4L2PixelFormat::fromPixelFormat(cfg.pixelFormat))
+	    format.fourcc != V4L2PixelFormat::fromPixelFormat(cfg.pixelFormat)) {
+		LOG(VIVID, Error)
+			<< "Requested " << cfg.toString() << ", got "
+			<< format.size.toString() << "-"
+			<< format.fourcc.toString();
 		return -EINVAL;
+	}
 
 	/* Set initial controls specific to VIVID */
 	ControlList controls(data->video_->controls());
