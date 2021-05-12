@@ -9,6 +9,19 @@
 
 #include "libcamera/internal/pipeline_handler.h"
 
+/*
+ * Explicitly disable the unused-parameter warning in this pipeline handler.
+ *
+ * Parameters are left unused while they are introduced incrementally, so for
+ * documentation purposes only we disable this warning so that we can compile
+ * each commit independently without breaking the flow of the development
+ * additions.
+ *
+ * This is not recommended practice within libcamera, please listen to your
+ * compiler warnings.
+ */
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
 namespace libcamera {
 
 LOG_DEFINE_CATEGORY(VIVID)
