@@ -589,7 +589,7 @@ std::string ControlInfo::toString() const
 {
 	std::stringstream ss;
 
-	ss << "[" << min_.toString() << ".." << max_.toString() << "]";
+	ss << "[" << min_.toString() << ".." << max_.toString() << ", " << def_.toString() << "]";
 
 	return ss.str();
 }
