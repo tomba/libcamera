@@ -270,7 +270,7 @@ PYBIND11_MODULE(pycamera, m)
 
 	py::class_<CameraConfiguration>(m, "CameraConfiguration")
 		.def("__iter__", [](CameraConfiguration& self) {
-			return py::make_iterator(self);
+			return py::make_iterator<py::return_value_policy::reference_internal>(self);
 		}, py::keep_alive<0, 1>())
 		.def("__len__", [](CameraConfiguration& self) {
 			return self.size();
