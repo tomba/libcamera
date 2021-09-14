@@ -180,7 +180,7 @@ PYBIND11_MODULE(pycamera, m)
 			return l;
 		});
 
-	py::class_<Camera, shared_ptr<Camera>>(m, "Camera", py::dynamic_attr())
+	py::class_<Camera, shared_ptr<Camera>>(m, "Camera")
 		.def_property_readonly("id", &Camera::id)
 		.def("acquire", &Camera::acquire)
 		.def("release", &Camera::release)
