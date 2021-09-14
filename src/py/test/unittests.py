@@ -9,8 +9,13 @@ from collections import defaultdict
 import time
 import selectors
 import os
+import errno
 
-class SimpleTestMethods(unittest.TestCase):
+class MyTestCase(unittest.TestCase):
+	def assertZero(self, a, msg=None):
+		self.assertEqual(a, 0, msg)
+
+class SimpleTestMethods(MyTestCase):
 	def test_find_ref(self):
 		cm = pycam.CameraManager.singleton()
 		cam = cm.find("platform/vimc")
@@ -25,7 +30,40 @@ class SimpleTestMethods(unittest.TestCase):
 		gc.collect()
 		# Should cause libcamera WARN/ERROR or crash if cam -> cm keep_alive doesn't work
 
-class SimpleCaptureMethods(unittest.TestCase):
+	def test_acquire_release(self):
+		cm = pycam.CameraManager.singleton()
+		cam = cm.get("platform/vimc.0 Sensor B")
+		self.assertTrue(cam != None)
+
+		ret = cam.acquire()
+		self.assertZero(ret)
+
+		ret = cam.release()
+		self.assertZero(ret)
+
+	def test_double_acquire(self):
+		cm = pycam.CameraManager.singleton()
+		cam = cm.get("platform/vimc.0 Sensor B")
+		self.assertTrue(cam != None)
+
+		ret = cam.acquire()
+		self.assertZero(ret)
+
+		pycam.logSetLevel("Camera", "FATAL")
+		ret = cam.acquire()
+		self.assertEqual(ret, -errno.EBUSY)
+		pycam.logSetLevel("Camera", "ERROR")
+
+		ret = cam.release()
+		self.assertZero(ret)
+
+		ret = cam.release()
+		# I expected EBUSY, but looks like double release works fine
+		self.assertZero(ret)
+
+
+
+class SimpleCaptureMethods(MyTestCase):
 
 	def setUp(self):
 		self.cm = pycam.CameraManager.singleton()
@@ -34,15 +72,23 @@ class SimpleCaptureMethods(unittest.TestCase):
 			self.cm = None
 			raise Exception("No vimc found")
 
-		r = self.cam.acquire()
-		if r != 0:
+		ret = self.cam.acquire()
+		if ret != 0:
 			self.cam = None
 			self.cm = None
 			raise Exception("Failed to acquire camera")
 
 
 	def tearDown(self):
-		self.cam.release()
+		# If a test fails, the camera may be in running state. So always stop.
+		self.cam.stop()
+
+		ret = self.cam.release()
+		if ret != 0:
+			raise Exception("Failed to release camera")
+
+		self.cam = None
+		self.cm = None
 
 	def test_sleep(self):
 		cm = self.cm
@@ -55,7 +101,7 @@ class SimpleCaptureMethods(unittest.TestCase):
 		fmts = streamconfig.formats
 
 		ret = cam.configure(camconfig);
-		self.assertTrue(ret == 0)
+		self.assertZero(ret)
 
 		stream = streamconfig.stream
 
@@ -68,19 +114,22 @@ class SimpleCaptureMethods(unittest.TestCase):
 		reqs = []
 		for i in range(num_bufs):
 			req = cam.createRequest(i)
+			self.assertIsNotNone(req)
 
 			buffer = allocator.buffers(stream)[i]
 			ret = req.addBuffer(stream, buffer)
-			self.assertTrue(ret == 0)
+			self.assertZero(ret)
 
 			reqs.append(req)
 
 		buffer = None
 
-		cam.start()
+		ret = cam.start()
+		self.assertZero(ret)
 
 		for req in reqs:
-			cam.queueRequest(req)
+			ret = cam.queueRequest(req)
+			self.assertZero(ret)
 
 		reqs = None
 		gc.collect()
@@ -97,7 +146,8 @@ class SimpleCaptureMethods(unittest.TestCase):
 		reqs = None
 		gc.collect()
 
-		cam.stop()
+		ret = cam.stop()
+		self.assertZero(ret)
 
 
 	def test_select(self):
@@ -111,7 +161,7 @@ class SimpleCaptureMethods(unittest.TestCase):
 		fmts = streamconfig.formats
 
 		ret = cam.configure(camconfig);
-		self.assertTrue(ret == 0)
+		self.assertZero(ret)
 
 		stream = streamconfig.stream
 
@@ -124,19 +174,22 @@ class SimpleCaptureMethods(unittest.TestCase):
 		reqs = []
 		for i in range(num_bufs):
 			req = cam.createRequest(i)
+			self.assertIsNotNone(req)
 
 			buffer = allocator.buffers(stream)[i]
 			ret = req.addBuffer(stream, buffer)
-			self.assertTrue(ret == 0)
+			self.assertZero(ret)
 
 			reqs.append(req)
 
 		buffer = None
 
-		cam.start()
+		ret = cam.start()
+		self.assertZero(ret)
 
 		for req in reqs:
-			cam.queueRequest(req)
+			ret = cam.queueRequest(req)
+			self.assertZero(ret)
 
 		reqs = None
 		gc.collect()
@@ -169,7 +222,8 @@ class SimpleCaptureMethods(unittest.TestCase):
 		reqs = None
 		gc.collect()
 
-		cam.stop()
+		ret = cam.stop()
+		self.assertZero(ret)
 
 
 if __name__ == '__main__':

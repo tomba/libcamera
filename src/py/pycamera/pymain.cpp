@@ -98,6 +98,8 @@ static void handle_request_completed(Request *req)
 
 PYBIND11_MODULE(pycamera, m)
 {
+	m.def("logSetLevel", &logSetLevel);
+
 	py::class_<CameraManager, std::shared_ptr<CameraManager>>(m, "CameraManager")
 		.def_static("singleton", []() {
 			shared_ptr<CameraManager> cm = g_camera_manager.lock();
@@ -139,6 +141,7 @@ PYBIND11_MODULE(pycamera, m)
 			}
 
 			vector<py::object> ret;
+
 			for (Request *req : v) {
 				py::object o = py::cast(req);
 				// decrease the ref increased in Camera::queueRequest()
@@ -187,13 +190,19 @@ PYBIND11_MODULE(pycamera, m)
 		.def("start", [](shared_ptr<Camera> &self) {
 			self->requestCompleted.connect(handle_request_completed);
 
-			self->start();
+			int ret = self->start();
+			if (ret)
+				self->requestCompleted.disconnect(handle_request_completed);
+
+			return ret;
 		})
 
 		.def("stop", [](shared_ptr<Camera> &self) {
-			self->stop();
+			int ret = self->stop();
+			if (!ret)
+				self->requestCompleted.disconnect(handle_request_completed);
 
-			self->requestCompleted.disconnect(handle_request_completed);
+			return ret;
 		})
 
 		.def("__repr__", [](shared_ptr<Camera> &self) {
