@@ -249,7 +249,7 @@ def readcam(fileobj, mask):
 	global running
 	data = os.read(fileobj, 8)
 
-	reqs = cm.get_ready_requests()
+	reqs = cm.getReadyRequests()
 
 	ctx = contexts[0]
 	for req in reqs:

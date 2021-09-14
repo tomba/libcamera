@@ -136,7 +136,7 @@ class SimpleCaptureMethods(MyTestCase):
 
 		time.sleep(0.5)
 
-		reqs = cm.get_ready_requests()
+		reqs = cm.getReadyRequests()
 
 		self.assertTrue(len(reqs) == num_bufs)
 
@@ -205,7 +205,7 @@ class SimpleCaptureMethods(MyTestCase):
 			for key, mask in events:
 				data = os.read(key.fileobj, 8)
 
-				l = cm.get_ready_requests()
+				l = cm.getReadyRequests()
 
 				self.assertTrue(len(l) > 0)
 

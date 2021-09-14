@@ -132,7 +132,7 @@ PYBIND11_MODULE(pycamera, m)
 			return g_eventfd;
 		})
 
-		.def("get_ready_requests", [](CameraManager &) {
+		.def("getReadyRequests", [](CameraManager &) {
 		        vector<Request*> v;
 
 			{

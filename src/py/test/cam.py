@@ -283,7 +283,7 @@ def event_handler(state):
 
 	data = os.read(cm.efd, 8)
 
-	reqs = cm.get_ready_requests()
+	reqs = cm.getReadyRequests()
 
 	for req in reqs:
 		ctx = next(ctx for ctx in contexts if ctx["camera"] == req.camera)

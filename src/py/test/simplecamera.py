@@ -19,7 +19,7 @@ class SimpleCameraManager:
 	def read_events(self):
 		data = os.read(self.cm.efd, 8)
 
-		reqs = self.cm.get_ready_requests()
+		reqs = self.cm.getReadyRequests()
 
 		for req in reqs:
 			for c in self.cameras:
