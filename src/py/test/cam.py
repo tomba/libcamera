@@ -388,7 +388,7 @@ def main():
 	parser.add_argument("-s", "--stream", nargs="+", action=CustomAction)
 	args = parser.parse_args()
 
-	cm = pycam.CameraManager()
+	cm = pycam.CameraManager.singleton()
 
 	if args.list:
 		do_cmd_list(cm)

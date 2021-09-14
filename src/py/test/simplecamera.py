@@ -3,7 +3,7 @@ import os
 
 class SimpleCameraManager:
 	def __init__(self):
-		self.cm = pycam.CameraManager()
+		self.cm = pycam.CameraManager.singleton()
 
 		self.cameras = []
 		for c in self.cm.cameras:

@@ -80,6 +80,7 @@ static ControlValue PyToControlValue(const py::object &ob, ControlType type)
 	}
 }
 
+static weak_ptr<CameraManager> g_camera_manager;
 static int g_eventfd;
 static mutex g_reqlist_mutex;
 static vector<Request*> g_reqlist;
@@ -97,22 +98,31 @@ static void handle_request_completed(Request *req)
 
 PYBIND11_MODULE(pycamera, m)
 {
-	py::class_<CameraManager>(m, "CameraManager")
-		/*
-		 * CameraManager::stop() cannot be called, as CameraManager expects all Camera
-		 * instances to be released before calling stop and we can't have such requirement
-		 * in python, especially as we have a keep-alive from Camera to CameraManager.
-		 * So we rely on GC and the keep-alives, and call CameraManager::start() from
-		 * the constructor.
-		 */
+	py::class_<CameraManager, std::shared_ptr<CameraManager>>(m, "CameraManager")
+		.def_static("singleton", []() {
+			shared_ptr<CameraManager> cm = g_camera_manager.lock();
+			if (cm)
+				return cm;
 
-		.def(py::init([]() {
-			g_eventfd = eventfd(0, 0);
+			int fd = eventfd(0, 0);
+			if (fd == -1)
+				throw std::system_error(errno, std::generic_category(), "Failed to create eventfd");
 
-			auto cm = make_unique<CameraManager>();
-			cm->start();
+			cm = shared_ptr<CameraManager>(new CameraManager, [](auto p) {
+				close(g_eventfd);
+				g_eventfd = -1;
+				delete p;
+			});
+
+			g_eventfd = fd;
+			g_camera_manager = cm;
+
+			int ret = cm->start();
+			if (ret)
+				throw std::system_error(-ret, std::generic_category(), "Failed to start CameraManager");
+
 			return cm;
-		}))
+		})
 
 		.def_property_readonly("version", &CameraManager::version)
 

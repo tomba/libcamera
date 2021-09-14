@@ -67,7 +67,7 @@ CONFIGS["vivid"] = [ {
 
 config = CONFIGS[CONFIG]
 
-cm = pycam.CameraManager()
+cm = pycam.CameraManager.singleton()
 
 cameras = []
 

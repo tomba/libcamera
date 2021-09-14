@@ -12,14 +12,14 @@ import os
 
 class SimpleTestMethods(unittest.TestCase):
 	def test_find_ref(self):
-		cm = pycam.CameraManager()
+		cm = pycam.CameraManager.singleton()
 		cam = cm.find("platform/vimc")
 		self.assertTrue(cam != None)
 		gc.collect()
 		# Should cause libcamera WARN/ERROR or crash if cam -> cm keep_alive doesn't work
 
 	def test_get_ref(self):
-		cm = pycam.CameraManager()
+		cm = pycam.CameraManager.singleton()
 		cam = cm.get("platform/vimc.0 Sensor B")
 		self.assertTrue(cam != None)
 		gc.collect()
@@ -28,11 +28,18 @@ class SimpleTestMethods(unittest.TestCase):
 class SimpleCaptureMethods(unittest.TestCase):
 
 	def setUp(self):
-		self.cm = pycam.CameraManager()
+		self.cm = pycam.CameraManager.singleton()
 		self.cam = self.cm.find("platform/vimc")
-		self.assertTrue(self.cam != None)
+		if self.cam == None:
+			self.cm = None
+			raise Exception("No vimc found")
 
-		self.cam.acquire()
+		r = self.cam.acquire()
+		if r != 0:
+			self.cam = None
+			self.cm = None
+			raise Exception("Failed to acquire camera")
+
 
 	def tearDown(self):
 		self.cam.release()
