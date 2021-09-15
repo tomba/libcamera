@@ -369,9 +369,7 @@ PYBIND11_MODULE(pycamera, m)
 
 	py::class_<Request>(m, "Request")
 	        .def_property_readonly("camera", &Request::camera)
-		// TODO: The py-request should add a keep-alive to the given py-fb, so that the fb can't be freed before the request is done.
-		// TODO: But where to drop the keep-alive?
-		.def("addBuffer", &Request::addBuffer)
+		.def("addBuffer", &Request::addBuffer, py::keep_alive<1, 3>()) // Request keeps Framebuffer alive
 		.def_property_readonly("status", &Request::status)
 		.def_property_readonly("buffers", &Request::buffers)
 		.def_property_readonly("cookie", &Request::cookie)
@@ -401,7 +399,8 @@ PYBIND11_MODULE(pycamera, m)
 
 			return ret;
 		})
-		.def("reuse", &Request::reuse, py::arg("flags") = Request::ReuseFlag::Default)
+		// As we add a keep_alive to the fb in addBuffers(), we can only allow reuse with ReuseBuffers.
+		.def("reuse", [](Request& self) { self.reuse(Request::ReuseFlag::ReuseBuffers); })
 	;
 
 	py::enum_<Request::Status>(m, "RequestStatus")

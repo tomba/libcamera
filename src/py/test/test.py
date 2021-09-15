@@ -209,7 +209,7 @@ def req_complete_cb(ctx, req):
 	ctx["reqs_completed"] += 1
 
 	if ctx["reqs_queued"] < args.num_frames:
-		req.reuse(pycam.ReuseFlag.ReuseBuffers)
+		req.reuse()
 		camera.queueRequest(req)
 		ctx["reqs_queued"] += 1
 

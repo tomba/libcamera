@@ -345,7 +345,7 @@ def request_prcessed(ctx, req):
 	camera = ctx["camera"]
 
 	if ctx["reqs-queued"] < ctx["opt-capture"]:
-		req.reuse(pycam.ReuseFlag.ReuseBuffers)
+		req.reuse()
 		camera.queueRequest(req)
 		ctx["reqs-queued"] += 1
 
