@@ -5,14 +5,11 @@ from PIL.ImageQt import ImageQt
 import numpy as np
 import sys
 
-format_map = {
-	"YUYV": QtGui.QImage.Format_RGB16,
-	"MJPEG": QtGui.QImage.Format_RGB888,
-	"BGR888": QtGui.QImage.Format_RGB888,
-	"RGB888": QtGui.QImage.Format_RGB888,
-	"ARGB8888": QtGui.QImage.Format_ARGB32,
-	"XRGB8888": QtGui.QImage.Format_ARGB32, # XXX Format_RGB32 crashes?
-}
+def rgb_to_pix(rgb):
+	img = Image.frombuffer("RGB", (rgb.shape[1], rgb.shape[0]), rgb)
+	qim = ImageQt(img).copy()
+	pix = QtGui.QPixmap.fromImage(qim)
+	return pix
 
 class QtRenderer:
 	def __init__(self, state):
@@ -32,9 +29,6 @@ class QtRenderer:
 			for stream in ctx["streams"]:
 				fmt = stream.configuration.fmt
 				size = stream.configuration.size
-
-				if not fmt in format_map:
-					raise Exception("Unsupported pixel format")
 
 				window = MainWindow(ctx, stream)
 				window.setAttribute(QtCore.Qt.WA_ShowWithoutActivating)
@@ -139,7 +133,6 @@ class MainWindow(QtWidgets.QWidget):
 	def buf_to_qpixmap(self, stream, fb):
 		with fb.mmap(0) as b:
 			cfg = stream.configuration
-			qfmt = format_map[cfg.fmt]
 			w, h = cfg.size
 			pitch = cfg.stride
 
@@ -148,33 +141,44 @@ class MainWindow(QtWidgets.QWidget):
 				qim = ImageQt(img).copy()
 				pix = QtGui.QPixmap.fromImage(qim)
 			elif cfg.fmt == "YUYV":
-				arr = np.array(b)
-				y = arr[0::2]
-				u = arr[1::4]
-				v = arr[3::4]
+				# YUV422
+				yuyv = np.array(b, dtype=np.uint8).reshape((h, w // 2 * 4))
 
-				yuv = np.ones((len(y)) * 3, dtype=np.uint8)
-				yuv[::3] = y
-				yuv[1::6] = u
-				yuv[2::6] = v
-				yuv[4::6] = u
-				yuv[5::6] = v
+				# YUV444
+				yuv = np.empty((h, w, 3), dtype=np.uint8)
+				yuv[:, :, 0] = yuyv[:, 0::2]					# Y
+				yuv[:, :, 1] = yuyv[:, 1::4].repeat(2, axis=1)	# U
+				yuv[:, :, 2] = yuyv[:, 3::4].repeat(2, axis=1)	# V
 
-				# XXX YCbCr doesn't work?
-				#img = Image.frombytes("YCbCr", (w, h), yuv.tobytes())
-				img = Image.frombuffer("RGB", (w, h), yuv)
+				m = np.array([
+					[ 1.0, 1.0, 1.0],
+					[-0.000007154783816076815, -0.3441331386566162, 1.7720025777816772],
+					[ 1.4019975662231445, -0.7141380310058594 , 0.00001542569043522235]
+				])
 
-				qim = ImageQt(img).copy()
-				pix = QtGui.QPixmap.fromImage(qim)
+				rgb = np.dot(yuv, m)
+				rgb[:, :, 0] -= 179.45477266423404
+				rgb[:, :, 1] += 135.45870971679688
+				rgb[:, :, 2] -= 226.8183044444304
+				rgb = rgb.astype(np.uint8)
+
+				pix = rgb_to_pix(rgb)
+			elif cfg.fmt == "RGB888":
+				rgb = np.array(b, dtype=np.uint8).reshape((h, w, 3))
+
+				pix = rgb_to_pix(rgb)
+			elif cfg.fmt in ["ARGB8888", "XRGB8888"]:
+				rgb = np.array(b, dtype=np.uint8).reshape((h, w, 4))
+				# drop alpha component
+				rgb = np.delete(rgb, np.s_[3::4], axis=2)
+
+				pix = rgb_to_pix(rgb)
 			else:
-				img = QtGui.QImage(b, w, h, pitch, qfmt)
-				pix = QtGui.QPixmap.fromImage(img)
+				raise Exception("Format not supported: " + cfg.fmt)
 
 		return pix
 
 	def handle_request(self, stream, fb):
-		global format_map
-
 		ctx = self.ctx
 
 		pix = self.buf_to_qpixmap(stream, fb)
