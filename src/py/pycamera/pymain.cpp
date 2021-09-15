@@ -369,6 +369,8 @@ PYBIND11_MODULE(pycamera, m)
 
 	py::class_<Request>(m, "Request")
 	        .def_property_readonly("camera", &Request::camera)
+		// TODO: The py-request should add a keep-alive to the given py-fb, so that the fb can't be freed before the request is done.
+		// TODO: But where to drop the keep-alive?
 		.def("addBuffer", &Request::addBuffer)
 		.def_property_readonly("status", &Request::status)
 		.def_property_readonly("buffers", &Request::buffers)
