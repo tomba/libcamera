@@ -10,6 +10,7 @@ import time
 import selectors
 import os
 import errno
+import weakref
 
 class MyTestCase(unittest.TestCase):
 	def assertZero(self, a, msg=None):
@@ -18,17 +19,37 @@ class MyTestCase(unittest.TestCase):
 class SimpleTestMethods(MyTestCase):
 	def test_find_ref(self):
 		cm = pycam.CameraManager.singleton()
+		wr_cm = weakref.ref(cm)
+
 		cam = cm.find("platform/vimc")
-		self.assertTrue(cam != None)
+		self.assertIsNotNone(cam)
+		wr_cam = weakref.ref(cam)
+
+		cm = None
 		gc.collect()
-		# Should cause libcamera WARN/ERROR or crash if cam -> cm keep_alive doesn't work
+		self.assertIsNotNone(wr_cm())
+
+		cam = None
+		gc.collect()
+		self.assertIsNone(wr_cm())
+		self.assertIsNone(wr_cam())
 
 	def test_get_ref(self):
 		cm = pycam.CameraManager.singleton()
+		wr_cm = weakref.ref(cm)
+
 		cam = cm.get("platform/vimc.0 Sensor B")
 		self.assertTrue(cam != None)
+		wr_cam = weakref.ref(cam)
+
+		cm = None
 		gc.collect()
-		# Should cause libcamera WARN/ERROR or crash if cam -> cm keep_alive doesn't work
+		self.assertIsNotNone(wr_cm())
+
+		cam = None
+		gc.collect()
+		self.assertIsNone(wr_cm())
+		self.assertIsNone(wr_cam())
 
 	def test_acquire_release(self):
 		cm = pycam.CameraManager.singleton()
@@ -61,10 +82,7 @@ class SimpleTestMethods(MyTestCase):
 		# I expected EBUSY, but looks like double release works fine
 		self.assertZero(ret)
 
-
-
-class SimpleCaptureMethods(MyTestCase):
-
+class CameraTesterBase(MyTestCase):
 	def setUp(self):
 		self.cm = pycam.CameraManager.singleton()
 		self.cam = self.cm.find("platform/vimc")
@@ -78,7 +96,6 @@ class SimpleCaptureMethods(MyTestCase):
 			self.cm = None
 			raise Exception("Failed to acquire camera")
 
-
 	def tearDown(self):
 		# If a test fails, the camera may be in running state. So always stop.
 		self.cam.stop()
@@ -90,6 +107,64 @@ class SimpleCaptureMethods(MyTestCase):
 		self.cam = None
 		self.cm = None
 
+
+class AllocatorTestMethods(CameraTesterBase):
+	def test_allocator(self):
+		cam = self.cam
+
+		camconfig = cam.generateConfiguration([pycam.StreamRole.StillCapture])
+		self.assertTrue(camconfig.size == 1)
+		wr_camconfig = weakref.ref(camconfig)
+
+		streamconfig = camconfig.at(0)
+		wr_streamconfig = weakref.ref(streamconfig)
+
+		ret = cam.configure(camconfig);
+		self.assertZero(ret)
+
+		stream = streamconfig.stream
+		wr_stream = weakref.ref(stream)
+
+		# stream should keep streamconfig and camconfig alive
+		streamconfig = None
+		camconfig = None
+		gc.collect()
+		self.assertIsNotNone(wr_camconfig())
+		self.assertIsNotNone(wr_streamconfig())
+
+		allocator = pycam.FrameBufferAllocator(cam);
+		ret = allocator.allocate(stream)
+		self.assertTrue(ret > 0)
+		wr_allocator = weakref.ref(allocator)
+
+		buffers = allocator.buffers(stream)
+		buffers = None
+
+
+		buffer = allocator.buffers(stream)[0]
+		self.assertIsNotNone(buffer)
+		wr_buffer = weakref.ref(buffer)
+
+		allocator = None
+		gc.collect()
+		self.assertIsNotNone(wr_buffer())
+		self.assertIsNotNone(wr_allocator())
+		self.assertIsNotNone(wr_stream())
+
+		buffer = None
+		gc.collect()
+		self.assertIsNone(wr_buffer())
+		self.assertIsNone(wr_allocator())
+		self.assertIsNotNone(wr_stream())
+
+		stream = None
+		gc.collect()
+		self.assertIsNone(wr_stream())
+		self.assertIsNone(wr_camconfig())
+		self.assertIsNone(wr_streamconfig())
+
+
+class SimpleCaptureMethods(CameraTesterBase):
 	def test_sleep(self):
 		cm = self.cm
 		cam = self.cam
@@ -226,17 +301,63 @@ class SimpleCaptureMethods(MyTestCase):
 		self.assertZero(ret)
 
 
+
+# Recursively expand slist's objects into olist, using seen to track already
+# processed objects.
+def _getr(slist, olist, seen):
+	for e in slist:
+		if id(e) in seen:
+			continue
+		seen.add(id(e))
+		olist.append(e)
+		tl = gc.get_referents(e)
+		if tl:
+			_getr(tl, olist, seen)
+
+def get_all_objects(ignored = []):
+	gcl = gc.get_objects()
+	olist = []
+	seen = set()
+
+	seen.add(id(gcl))
+	seen.add(id(olist))
+	seen.add(id(seen))
+	seen.update(set([id(o) for o in ignored]))
+
+	_getr(gcl, olist, seen)
+
+	return olist
+
+def create_type_count_map(olist):
+	map = defaultdict(int)
+	for o in olist:
+		map[type(o)] += 1
+	return map
+
+def diff_type_count_maps(before, after):
+	return [(k, after[k] - before[k]) for k in after if after[k] != before[k]]
+
 if __name__ == '__main__':
-	before = defaultdict(int)
-	after = defaultdict(int)
-	for i in gc.get_objects():
-		before[type(i)] += 1
+	# doesn't work very well, as things always leak a bit
+	test_leaks = False
 
-	unittest.main()
+	if test_leaks:
+		gc.unfreeze()
+		gc.collect()
 
-	for i in gc.get_objects():
-		after[type(i)] += 1
+		obs_before = get_all_objects()
 
-	leaks = [(k, after[k] - before[k]) for k in after if after[k] - before[k]]
-	if len(leaks) > 0:
-		print(leaks)
+	unittest.main(exit=False)
+
+	if test_leaks:
+		gc.unfreeze()
+		gc.collect()
+
+		obs_after = get_all_objects([obs_before])
+
+		before = create_type_count_map(obs_before)
+		after = create_type_count_map(obs_after)
+
+		leaks = diff_type_count_maps(before, after)
+		if len(leaks) > 0:
+			print(leaks)

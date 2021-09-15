@@ -329,22 +329,20 @@ PYBIND11_MODULE(pycamera, m)
 	py::class_<FrameBufferAllocator>(m, "FrameBufferAllocator")
 		.def(py::init<shared_ptr<Camera>>(), py::keep_alive<1, 2>())
 		.def("allocate", &FrameBufferAllocator::allocate)
-		.def("free", &FrameBufferAllocator::free)
 		.def_property_readonly("allocated", &FrameBufferAllocator::allocated)
-		// Create a list of FrameBuffer, where each FrameBuffer has a keep-alive to FrameBufferAllocator
+		// Create a list of FrameBuffers, where each FrameBuffer has a keep-alive to FrameBufferAllocator
 		.def("buffers", [](FrameBufferAllocator &self, Stream *stream) {
+			py::object py_self = py::cast(self);
 			py::list l;
 			for (auto &ub : self.buffers(stream)) {
-				py::object py_fa = py::cast(self);
-				py::object py_buf = py::cast(ub.get());
-				py::detail::keep_alive_impl(py_buf, py_fa);
+				py::object py_buf = py::cast(ub.get(), py::return_value_policy::reference_internal, py_self);
 				l.append(py_buf);
 			}
 			return l;
 		});
 
-	py::class_<FrameBuffer, unique_ptr<FrameBuffer, py::nodelete>>(m, "FrameBuffer")
-		// XXX who frees this
+	py::class_<FrameBuffer>(m, "FrameBuffer")
+		// TODO: implement FrameBuffer::Plane properly
 		.def(py::init([](vector<tuple<int, unsigned int>> planes, unsigned int cookie) {
 			vector<FrameBuffer::Plane> v;
 			for (const auto& t : planes)
@@ -362,7 +360,7 @@ PYBIND11_MODULE(pycamera, m)
 		})
 		.def_property("cookie", &FrameBuffer::cookie, &FrameBuffer::setCookie);
 
-	py::class_<Stream, unique_ptr<Stream, py::nodelete>>(m, "Stream")
+	py::class_<Stream>(m, "Stream")
 		.def_property_readonly("configuration", &Stream::configuration);
 
 	py::enum_<Request::ReuseFlag>(m, "ReuseFlag")
