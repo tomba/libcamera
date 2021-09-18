@@ -150,6 +150,9 @@ def to_rgb(fmt, size, data):
 		rgb = data.reshape((h, w, 3))
 		rgb[:, :, [0, 1, 2]] = rgb[:, :, [2, 1, 0]]
 
+	elif fmt == "BGR888":
+		rgb = data.reshape((h, w, 3))
+
 	elif fmt in ["ARGB8888", "XRGB8888"]:
 		rgb = data.reshape((h, w, 4))
 		rgb = np.flip(rgb, axis=2)
