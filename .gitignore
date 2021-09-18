@@ -8,3 +8,4 @@ subprojects/packagecache/
 subprojects/pybind11-2.*/
 *.patch
 *.pyc
+.cache
