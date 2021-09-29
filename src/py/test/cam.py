@@ -233,7 +233,7 @@ def create_requests(ctx):
 				print("Can't set buffer for request")
 				exit(-1)
 
-			requests.append(request)
+		requests.append(request)
 
 	ctx["requests"] = requests
 
