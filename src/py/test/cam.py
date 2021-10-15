@@ -377,7 +377,7 @@ def main():
 	parser.add_argument("-p", "--list-properties", action="store_true", help="List cameras properties")
 	parser.add_argument("--list-controls", action="store_true", help="List cameras controls")
 	parser.add_argument("-I", "--info", action="store_true", help="Display information about stream(s)")
-	parser.add_argument("-R", "--renderer", default="null", help="Renderer (null, qt)")
+	parser.add_argument("-R", "--renderer", default="null", help="Renderer (null, kms, qt, qtgl)")
 
 	# per camera options
 	parser.add_argument("-C", "--capture", nargs="?", type=int, const=1000000, action=CustomAction, help="Capture until interrupted by user or until CAPTURE frames captured")
