@@ -94,6 +94,20 @@ run_command('ln', '-fsrT', meson.current_source_dir() / 'utils',
 
 install_data(['__init__.py'], install_dir : destdir)
 
-# \todo Generate stubs when building. See https://peps.python.org/pep-0484/#stub-files
-# Note: Depends on pybind11-stubgen. To generate pylibcamera stubs:
-# $ PYTHONPATH=build/src/py pybind11-stubgen --no-setup-py -o build/src/py libcamera
+if not meson.is_cross_build()
+    # \todo Generate stubs when building, and install them.
+    # See https://peps.python.org/pep-0484/#stub-files
+    # Note: Depends on pybind11-stubgen. To generate pylibcamera stubs:
+    # $ PYTHONPATH=build/src/py pybind11-stubgen --no-setup-py -o build/src/py libcamera
+    # The target below can be ran manually, but how to create a meson target that
+    # is run if pycamera is built?
+
+    stubgen = find_program('pybind11-stubgen', required : false)
+
+    if stubgen.found()
+        run_target('pystubs',
+                   depends: pycamera,
+                   env: {'PYTHONPATH': meson.project_build_root() / 'src' / 'py'},
+                   command: [stubgen, '--no-setup-py', '-o', meson.project_build_root() / 'src' / 'py', 'libcamera'])
+    endif
+endif
