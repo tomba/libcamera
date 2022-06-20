@@ -461,4 +461,7 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    print("MAIN ENTER")
+    r = main()
+    print("MAIN EXIT")
+    sys.exit(r)
