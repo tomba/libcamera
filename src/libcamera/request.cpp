@@ -50,10 +50,12 @@ LOG_DEFINE_CATEGORY(Request)
 Request::Private::Private(Camera *camera)
 	: camera_(camera), cancelled_(false)
 {
+	printf("Request(%p)\n", this);
 }
 
 Request::Private::~Private()
 {
+	printf("~Request(%p)\n", this);
 	doCancelRequest();
 }
 
