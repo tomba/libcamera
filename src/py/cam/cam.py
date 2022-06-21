@@ -230,11 +230,20 @@ class CaptureState:
     # Called from renderer when there is a libcamera event
     def event_handler(self):
         try:
-            reqs = self.cm.get_ready_requests()
+            evs = self.cm.get_events()
+            for ev in evs:
+                type = ev.type
 
-            for req in reqs:
-                ctx = next(ctx for ctx in self.contexts if ctx.idx == req.cookie)
-                self.__request_handler(ctx, req)
+                if type == libcam.Event.Type.CameraAdded:
+                    print('Camera added:', ev.camera)
+                elif type == libcam.Event.Type.CameraRemoved:
+                    print('Camera removed:', ev.camera)
+                elif type == libcam.Event.Type.Disconnect:
+                    print(f'Camera {ev.camera} disconnected')
+                elif type == libcam.Event.Type.RequestCompleted:
+                    self.__request_handler(ev.camera, ev.request)
+                else:
+                    raise RuntimeError("Bad event type")
 
             running = any(ctx.reqs_completed < ctx.opt_capture for ctx in self.contexts)
             return running
@@ -242,7 +251,9 @@ class CaptureState:
             traceback.print_exc()
             return False
 
-    def __request_handler(self, ctx, req):
+    def __request_handler(self, cam, req):
+        ctx = next(ctx for ctx in self.contexts if ctx.camera == cam)
+
         if req.status != libcam.Request.Status.Complete:
             raise Exception('{}: Request failed: {}'.format(ctx.id, req.status))
 
@@ -446,6 +457,11 @@ def main():
         state.renderer = renderer
 
         state.do_cmd_capture()
+
+        # This is not strictly needed, but it helps to do a proper cleanup as we
+        # drop any unhandled events, and so makes it easier to use memory leak
+        # detectors.
+        cm.get_events()
 
     return 0
 
