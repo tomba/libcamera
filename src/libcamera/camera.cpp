@@ -761,6 +761,7 @@ Camera::Camera(std::unique_ptr<Private> d, const std::string &id,
 
 Camera::~Camera()
 {
+	printf("~Camera\n");
 }
 
 /**
