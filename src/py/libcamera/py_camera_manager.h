@@ -13,6 +13,48 @@
 
 using namespace libcamera;
 
+enum class CameraEventType {
+	CameraAdded,
+	CameraRemoved,
+	Disconnect,
+	RequestCompleted,
+	BufferCompleted,
+};
+
+/*
+ * This event struct is used internally to queue the events we receive from
+ * other threads.
+ */
+struct CameraEvent {
+	CameraEvent(CameraEventType type, std::shared_ptr<Camera> camera,
+		    Request *request = nullptr, FrameBuffer *fb = nullptr)
+		: type_(type), camera_(camera), request_(request), fb_(fb)
+	{
+	}
+
+	CameraEventType type_;
+	std::shared_ptr<Camera> camera_;
+	Request *request_;
+	FrameBuffer *fb_;
+};
+
+/*
+ * This event struct is passed to Python. We need to use pybind11::object here
+ * instead of a C++ pointer so that we keep a ref to the Request, and a
+ * keep-alive from the camera to the camera manager.
+ */
+struct PyCameraEvent {
+	PyCameraEvent(CameraEventType type, pybind11::object camera)
+		: type_(type), camera_(camera)
+	{
+	}
+
+	CameraEventType type_;
+	pybind11::object camera_;
+	pybind11::object request_;
+	pybind11::object fb_;
+};
+
 class PyCameraManager
 {
 public:
@@ -26,20 +68,30 @@ public:
 
 	int eventFd() const { return eventFd_.get(); }
 
-	std::vector<pybind11::object> getReadyRequests();
+	std::vector<pybind11::object> getReadyRequests(); /* DEPRECATED */
+	std::vector<PyCameraEvent> getPyEvents();
+	std::vector<PyCameraEvent> getPyCameraEvents(std::shared_ptr<Camera> camera);
 
-	void handleRequestCompleted(Request *req);
+	void handleBufferCompleted(std::shared_ptr<Camera> cam, Request *req, FrameBuffer *fb);
+	void handleRequestCompleted(std::shared_ptr<Camera> cam, Request *req);
+	void handleDisconnected(std::shared_ptr<Camera> cam);
+	void handleCameraAdded(std::shared_ptr<Camera> cam);
+	void handleCameraRemoved(std::shared_ptr<Camera> cam);
+
+	bool bufferCompletedEventActive_ = false;
 
 private:
 	std::unique_ptr<CameraManager> cameraManager_;
 
 	UniqueFD eventFd_;
-	libcamera::Mutex completedRequestsMutex_;
-	std::vector<Request *> completedRequests_
-		LIBCAMERA_TSA_GUARDED_BY(completedRequestsMutex_);
+	libcamera::Mutex eventsMutex_;
+	std::vector<CameraEvent> events_
+		LIBCAMERA_TSA_GUARDED_BY(eventsMutex_);
 
 	void writeFd();
 	int readFd();
-	void pushRequest(Request *req);
-	std::vector<Request *> getCompletedRequests();
+	void pushEvent(const CameraEvent &ev);
+	std::vector<CameraEvent> getEvents();
+
+	PyCameraEvent convertEvent(const CameraEvent &event);
 };

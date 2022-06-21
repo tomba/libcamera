@@ -61,6 +61,7 @@ PYBIND11_MODULE(_libcamera, m)
 	 * https://pybind11.readthedocs.io/en/latest/advanced/misc.html#avoiding-c-types-in-docstrings
 	 */
 
+	auto pyEvent = py::class_<PyCameraEvent>(m, "Event");
 	auto pyCameraManager = py::class_<PyCameraManager>(m, "CameraManager");
 	auto pyCamera = py::class_<Camera>(m, "Camera");
 	auto pyCameraConfiguration = py::class_<CameraConfiguration>(m, "CameraConfiguration");
@@ -93,6 +94,20 @@ PYBIND11_MODULE(_libcamera, m)
 	m.def("log_set_level", &logSetLevel);
 
 	/* Classes */
+
+	py::enum_<CameraEventType>(pyEvent, "Type")
+		.value("CameraAdded", CameraEventType::CameraAdded)
+		.value("CameraRemoved", CameraEventType::CameraRemoved)
+		.value("Disconnect", CameraEventType::Disconnect)
+		.value("RequestCompleted", CameraEventType::RequestCompleted)
+		.value("BufferCompleted", CameraEventType::BufferCompleted);
+
+	pyEvent
+		.def_readonly("type", &PyCameraEvent::type_)
+		.def_readonly("camera", &PyCameraEvent::camera_)
+		.def_readonly("request", &PyCameraEvent::request_)
+		.def_readonly("fb", &PyCameraEvent::fb_);
+
 	pyCameraManager
 		.def_static("singleton", []() {
 			std::shared_ptr<PyCameraManager> cm = gCameraManager.lock();
@@ -110,7 +125,13 @@ PYBIND11_MODULE(_libcamera, m)
 		.def_property_readonly("cameras", &PyCameraManager::cameras)
 
 		.def_property_readonly("event_fd", &PyCameraManager::eventFd)
-		.def("get_ready_requests", &PyCameraManager::getReadyRequests);
+
+		/* DEPRECATED */
+		.def("get_ready_requests", &PyCameraManager::getReadyRequests)
+
+		.def("get_events", &PyCameraManager::getPyEvents)
+
+		.def_readwrite("buffer_completed_active", &PyCameraManager::bufferCompletedEventActive_);
 
 	pyCamera
 		.def_property_readonly("id", &Camera::id)
@@ -133,7 +154,17 @@ PYBIND11_MODULE(_libcamera, m)
 			auto cm = gCameraManager.lock();
 			ASSERT(cm);
 
-			self.requestCompleted.connect(cm.get(), &PyCameraManager::handleRequestCompleted);
+			self.requestCompleted.connect(&self, [cm, camera=self.shared_from_this()](Request *req) {
+				cm->handleRequestCompleted(camera, req);
+			});
+
+			self.bufferCompleted.connect(&self, [cm, camera=self.shared_from_this()](Request *req, FrameBuffer *fb) {
+				cm->handleBufferCompleted(camera, req, fb);
+			});
+
+			self.disconnected.connect(&self, [cm, camera=self.shared_from_this()]() {
+				cm->handleDisconnected(camera);
+			});
 
 			ControlList controlList(self.controls());
 
@@ -154,10 +185,19 @@ PYBIND11_MODULE(_libcamera, m)
 			int ret = self.stop();
 
 			self.requestCompleted.disconnect();
+			self.bufferCompleted.disconnect();
+			self.disconnected.disconnect();
+
+			auto cm = gCameraManager.lock();
+			ASSERT(cm);
+
+			auto events = cm->getPyCameraEvents(self.shared_from_this());
 
 			if (ret)
 				throw std::system_error(-ret, std::generic_category(),
 							"Failed to stop camera");
+
+			return events;
 		})
 
 		.def("__str__", [](Camera &self) {

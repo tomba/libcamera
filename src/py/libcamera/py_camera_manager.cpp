@@ -5,6 +5,7 @@
 
 #include "py_camera_manager.h"
 
+#include <algorithm>
 #include <errno.h>
 #include <memory>
 #include <sys/eventfd.h>
@@ -35,11 +36,17 @@ PyCameraManager::PyCameraManager()
 	if (ret)
 		throw std::system_error(-ret, std::generic_category(),
 					"Failed to start CameraManager");
+
+	cameraManager_->cameraAdded.connect(this, &PyCameraManager::handleCameraAdded);
+	cameraManager_->cameraRemoved.connect(this, &PyCameraManager::handleCameraRemoved);
 }
 
 PyCameraManager::~PyCameraManager()
 {
 	LOG(Python, Debug) << "~PyCameraManager()";
+
+	cameraManager_->cameraAdded.disconnect();
+	cameraManager_->cameraRemoved.disconnect();
 }
 
 py::list PyCameraManager::cameras()
@@ -60,6 +67,43 @@ py::list PyCameraManager::cameras()
 	return l;
 }
 
+PyCameraEvent PyCameraManager::convertEvent(const CameraEvent &event)
+{
+	/*
+	 * We need to set a keep-alive here so that the camera keeps the
+	 * camera manager alive.
+	 */
+	py::object py_cm = py::cast(this);
+	py::object py_cam = py::cast(event.camera_);
+	py::detail::keep_alive_impl(py_cam, py_cm);
+
+	PyCameraEvent pyevent(event.type_, py_cam);
+
+	switch (event.type_) {
+	case CameraEventType::CameraAdded:
+	case CameraEventType::CameraRemoved:
+	case CameraEventType::Disconnect:
+		/* No additional parameters to add */
+		break;
+
+	case CameraEventType::BufferCompleted:
+		pyevent.request_ = py::cast(event.request_);
+		pyevent.fb_ = py::cast(event.fb_);
+		break;
+
+	case CameraEventType::RequestCompleted:
+		pyevent.request_ = py::cast(event.request_);
+
+		/* Decrease the ref increased in Camera.queue_request() */
+		pyevent.request_.dec_ref();
+
+		break;
+	}
+
+	return pyevent;
+}
+
+/* DEPRECATED */
 std::vector<py::object> PyCameraManager::getReadyRequests()
 {
 	int ret = readFd();
@@ -72,21 +116,134 @@ std::vector<py::object> PyCameraManager::getReadyRequests()
 
 	std::vector<py::object> py_reqs;
 
-	for (Request *request : getCompletedRequests()) {
-		py::object o = py::cast(request);
-		/* Decrease the ref increased in Camera.queue_request() */
-		o.dec_ref();
-		py_reqs.push_back(o);
+	for (const auto &ev : getEvents()) {
+		if (ev.type_ != CameraEventType::RequestCompleted)
+			continue;
+
+		PyCameraEvent pyev = convertEvent(ev);
+		py_reqs.push_back(pyev.request_);
 	}
 
 	return py_reqs;
 }
 
-/* Note: Called from another thread */
-void PyCameraManager::handleRequestCompleted(Request *req)
+std::vector<PyCameraEvent> PyCameraManager::getPyEvents()
 {
-	pushRequest(req);
-	writeFd();
+	int ret = readFd();
+
+	if (ret == EAGAIN) {
+		LOG(Python, Debug) << "No events";
+		return {};
+	}
+
+	if (ret != 0)
+		throw std::system_error(ret, std::generic_category());
+
+	std::vector<CameraEvent> events = getEvents();
+
+	LOG(Python, Debug) << "Got " << events.size() << " events";
+
+	std::vector<PyCameraEvent> pyevents;
+	pyevents.reserve(events.size());
+
+	std::transform(events.begin(), events.end(), std::back_inserter(pyevents),
+		       [this](const CameraEvent &ev) {
+			       return convertEvent(ev);
+		       });
+
+	return pyevents;
+}
+
+static bool isCameraSpecificEvent(const CameraEvent &event, std::shared_ptr<Camera> &camera)
+{
+	return event.camera_ == camera &&
+	       (event.type_ == CameraEventType::RequestCompleted ||
+		event.type_ == CameraEventType::BufferCompleted ||
+		event.type_ == CameraEventType::Disconnect);
+}
+
+std::vector<PyCameraEvent> PyCameraManager::getPyCameraEvents(std::shared_ptr<Camera> camera)
+{
+	std::vector<CameraEvent> events;
+	size_t unhandled_size;
+
+	{
+		MutexLocker guard(eventsMutex_);
+
+		/*
+		 * Collect events related to the given camera and remove them
+		 * from the events_ vector.
+		 */
+
+		auto it = events_.begin();
+		while (it != events_.end()) {
+			if (isCameraSpecificEvent(*it, camera)) {
+				events.push_back(*it);
+				it = events_.erase(it);
+			} else {
+				it++;
+			}
+		}
+
+		unhandled_size = events_.size();
+	}
+
+	/* Convert events to Python events */
+
+	std::vector<PyCameraEvent> pyevents;
+
+	for (const auto &event : events) {
+		PyCameraEvent pyev = convertEvent(event);
+		pyevents.push_back(pyev);
+	}
+
+	LOG(Python, Debug) << "Got " << pyevents.size() << " camera events, "
+			   << unhandled_size << " unhandled events left";
+
+	return pyevents;
+}
+
+/* Note: Called from another thread */
+void PyCameraManager::handleBufferCompleted(std::shared_ptr<Camera> cam, Request *req, FrameBuffer *fb)
+{
+	if (!bufferCompletedEventActive_)
+		return;
+
+	CameraEvent ev(CameraEventType::BufferCompleted, cam, req, fb);
+
+	pushEvent(ev);
+}
+
+/* Note: Called from another thread */
+void PyCameraManager::handleRequestCompleted(std::shared_ptr<Camera> cam, Request *req)
+{
+	CameraEvent ev(CameraEventType::RequestCompleted, cam, req);
+
+	pushEvent(ev);
+}
+
+/* Note: Called from another thread */
+void PyCameraManager::handleDisconnected(std::shared_ptr<Camera> cam)
+{
+	CameraEvent ev(CameraEventType::Disconnect, cam);
+
+	pushEvent(ev);
+}
+
+/* Note: Called from another thread */
+void PyCameraManager::handleCameraAdded(std::shared_ptr<Camera> cam)
+{
+	CameraEvent ev(CameraEventType::CameraAdded, cam);
+
+	pushEvent(ev);
+}
+
+/* Note: Called from another thread */
+void PyCameraManager::handleCameraRemoved(std::shared_ptr<Camera> cam)
+{
+	CameraEvent ev(CameraEventType::CameraRemoved, cam);
+
+	pushEvent(ev);
 }
 
 void PyCameraManager::writeFd()
@@ -116,16 +273,24 @@ int PyCameraManager::readFd()
 		return -EIO;
 }
 
-void PyCameraManager::pushRequest(Request *req)
+void PyCameraManager::pushEvent(const CameraEvent &ev)
 {
-	MutexLocker guard(completedRequestsMutex_);
-	completedRequests_.push_back(req);
+	{
+		MutexLocker guard(eventsMutex_);
+		events_.push_back(ev);
+	}
+
+	writeFd();
+
+	LOG(Python, Debug) << "Queued events: " << events_.size();
 }
 
-std::vector<Request *> PyCameraManager::getCompletedRequests()
+std::vector<CameraEvent> PyCameraManager::getEvents()
 {
-	std::vector<Request *> v;
-	MutexLocker guard(completedRequestsMutex_);
-	swap(v, completedRequests_);
+	std::vector<CameraEvent> v;
+
+	MutexLocker guard(eventsMutex_);
+	swap(v, events_);
+
 	return v;
 }
