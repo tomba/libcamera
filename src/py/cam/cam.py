@@ -243,11 +243,7 @@ class CaptureState:
     # Called from renderer when there is a libcamera event
     def event_handler(self):
         try:
-            reqs = self.cm.get_ready_requests()
-
-            for req in reqs:
-                ctx = next(ctx for ctx in self.contexts if ctx.idx == req.cookie)
-                self.__request_handler(ctx, req)
+            self.cm.dispatch_events()
 
             running = any(ctx.reqs_completed < ctx.opt_capture for ctx in self.contexts)
             return running
@@ -255,7 +251,9 @@ class CaptureState:
             traceback.print_exc()
             return False
 
-    def __request_handler(self, ctx, req):
+    def __request_handler(self, cam, req):
+        ctx = next(ctx for ctx in self.contexts if ctx.camera == cam)
+
         if req.status != libcam.Request.Status.Complete:
             raise Exception('{}: Request failed: {}'.format(ctx.id, req.status))
 
@@ -310,6 +308,9 @@ class CaptureState:
             ctx.camera.queue_request(req)
             ctx.reqs_queued += 1
 
+    def __disconnect_handler(self, cam):
+        print('Camera', cam, 'disconnected')
+
     def __capture_init(self):
         for ctx in self.contexts:
             ctx.acquire()
@@ -323,6 +324,15 @@ class CaptureState:
         for ctx in self.contexts:
             ctx.create_requests()
 
+        for ctx in self.contexts:
+            # These cause circular dependencies:
+            # The callback in the camera points to CaptureState.
+            # The CaptureState points to the camera.
+            # This can be solved by setting the callbacks to None after stopping
+            # or using lambdas here and weakref.WeakMethod.
+            ctx.camera.request_completed = self.__request_handler
+            ctx.camera.disconnected = self.__disconnect_handler
+
     def __capture_start(self):
         for ctx in self.contexts:
             ctx.start()
@@ -333,6 +343,10 @@ class CaptureState:
     def __capture_deinit(self):
         for ctx in self.contexts:
             ctx.stop()
+
+        for ctx in self.contexts:
+            ctx.camera.request_completed = None
+            ctx.camera.disconnected = None
 
         for ctx in self.contexts:
             ctx.release()
@@ -402,6 +416,9 @@ def main():
 
     cm = libcam.CameraManager.singleton()
 
+    cm.camera_added = lambda c: print("Camera added:", c)
+    cm.camera_removed = lambda c: print("Camera removed:", c)
+
     if args.list:
         do_cmd_list(cm)
 
@@ -459,6 +476,8 @@ def main():
         state.renderer = renderer
 
         state.do_cmd_capture()
+
+        cm.discard_events()
 
     return 0
 
