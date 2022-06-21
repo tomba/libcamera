@@ -43,17 +43,23 @@ CameraManager
 The Python API provides a singleton CameraManager via ``CameraManager.singleton()``.
 There is no need to start or stop the CameraManager.
 
-Handling Completed Requests
----------------------------
+Event Handling
+--------------
 
-The Python bindings do not expose the ``Camera::requestCompleted`` signal
-directly as the signal is invoked from another thread and it has real-time
-constraints. Instead the bindings queue the completed requests internally and
-use an eventfd to inform the user that there are completed requests.
+The Python bindings do not expose the signals from the C++ side directly as the
+signals are invoked from another thread and they may have real-time
+constraints. Instead the bindings queue the received events internally and use
+an eventfd to inform the user that there are events to be handled.
 
-The user can wait on the eventfd, and upon getting an event, use
-``CameraManager.get_ready_requests()`` to clear the eventfd event and to get
-the completed requests.
+The user can wait on the eventfd (e.g. by using Python Selector), and use
+``CameraManager.get_events()`` to reset the eventfd and get the events.
+
+The CameraManager events (CameraAdded and CameraRemoved) are always enabled, but
+of the Camera events only RequestCompleted is enabled by default. To enable
+Disconnect or BufferCompleted event, use ``Camera.enable_camera_event()``.
+
+The ``Camera.stop()`` method will return all events related to that Camera from
+the event queue.
 
 Controls & Properties
 ---------------------
