@@ -107,8 +107,20 @@ PYBIND11_MODULE(_libcamera, m)
 		.def_property_readonly("cameras", &PyCameraManager::getCameras)
 
 		.def_property_readonly("event_fd", &PyCameraManager::eventFd)
+		/* DEPRECATED */
 		.def("get_ready_requests", &PyCameraManager::getReadyRequests,
-		     py::arg("nonblocking") = false);
+		     py::arg("nonblocking") = false)
+		.def("dispatch_events", &PyCameraManager::dispatchEvents,
+		     py::arg("nonblocking") = false)
+		.def("discard_events", &PyCameraManager::discardEvents)
+
+		.def_property("camera_added",
+		              &PyCameraManager::getCameraAdded,
+		              &PyCameraManager::setCameraAdded)
+
+		.def_property("camera_removed",
+		              &PyCameraManager::getCameraRemoved,
+		              &PyCameraManager::setCameraRemoved);
 
 	pyCamera
 		.def_property_readonly("id", &Camera::id)
@@ -121,8 +133,13 @@ PYBIND11_MODULE(_libcamera, m)
 			auto cm = gCameraManager.lock();
 			assert(cm);
 
-			self.requestCompleted.connect(&self, [cm=std::move(cm)](Request *req) {
-				cm->handleRequestCompleted(req);
+			/*
+			 * Note: We always subscribe requestComplete, as the bindings
+			 * use requestComplete event to decrement the Request refcount-
+			 */
+
+			self.requestCompleted.connect(&self, [cm, camera=self.shared_from_this()](Request *req) {
+				cm->handleRequestCompleted(camera, req);
 			});
 
 			ControlList controlList(self.controls());
@@ -149,6 +166,71 @@ PYBIND11_MODULE(_libcamera, m)
 			self.requestCompleted.disconnect();
 
 			return 0;
+		})
+
+		.def_property("request_completed",
+		[](Camera &self) {
+			auto cm = gCameraManager.lock();
+			assert(cm);
+
+			return cm->getRequestCompleted(&self);
+		},
+		[](Camera &self, std::function<void(std::shared_ptr<Camera>, Request *)> f) {
+			auto cm = gCameraManager.lock();
+			assert(cm);
+
+			cm->setRequestCompleted(&self, f);
+
+			/*
+			 * Note: We do not subscribe requestComplete here, as we
+			 * do that in the start() method.
+			 */
+		})
+
+		.def_property("buffer_completed",
+		[](Camera &self) -> std::function<void(std::shared_ptr<Camera>, Request *, FrameBuffer *)> {
+			auto cm = gCameraManager.lock();
+			assert(cm);
+
+			return cm->getBufferCompleted(&self);
+		},
+		[](Camera &self, std::function<void(std::shared_ptr<Camera>, Request *, FrameBuffer *)> f) {
+			auto cm = gCameraManager.lock();
+			assert(cm);
+
+			cm->setBufferCompleted(&self, f);
+
+			self.bufferCompleted.disconnect();
+
+			if (!f)
+				return;
+
+			self.bufferCompleted.connect(&self, [cm, camera=self.shared_from_this()](Request *req, FrameBuffer *fb) {
+				cm->handleBufferCompleted(camera, req, fb);
+			});
+		})
+
+		.def_property("disconnected",
+		[](Camera &self) -> std::function<void(std::shared_ptr<Camera>)> {
+			auto cm = gCameraManager.lock();
+			assert(cm);
+
+			return cm->getDisconnected(&self);
+		},
+		[](Camera &self, std::function<void(std::shared_ptr<Camera>)> f) {
+			auto cm = gCameraManager.lock();
+			assert(cm);
+
+			cm->setDisconnected(&self, f);
+
+			self.disconnected.disconnect();
+
+			if (!f)
+				return;
+
+			self.disconnected.connect(&self, [cm, camera=self.shared_from_this()]() {
+				cm->handleDisconnected(camera);
+			});
 		})
 
 		.def("__str__", [](Camera &self) {
