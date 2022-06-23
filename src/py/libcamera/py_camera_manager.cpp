@@ -18,6 +18,8 @@ using namespace libcamera;
 
 PyCameraManager::PyCameraManager()
 {
+	printf("PyCameraManager()\n");
+
 	int fd = eventfd(0, 0);
 	if (fd == -1)
 		throw std::system_error(errno, std::generic_category(),
@@ -36,6 +38,8 @@ PyCameraManager::PyCameraManager()
 
 PyCameraManager::~PyCameraManager()
 {
+	printf("~PyCameraManager()\n");
+
 	if (eventFd_ != -1) {
 		close(eventFd_);
 		eventFd_ = -1;
