@@ -6,6 +6,7 @@
 #include "py_camera_manager.h"
 
 #include <cerrno>
+#include <poll.h>
 #include <sys/eventfd.h>
 #include <system_error>
 #include <unistd.h>
@@ -64,9 +65,10 @@ py::list PyCameraManager::getCameras()
 	return l;
 }
 
-std::vector<py::object> PyCameraManager::getReadyRequests()
+std::vector<py::object> PyCameraManager::getReadyRequests(bool nonBlocking)
 {
-	readFd();
+	if (!nonBlocking || hasEvents())
+		readFd();
 
 	std::vector<py::object> ret;
 
@@ -120,4 +122,19 @@ std::vector<Request *> PyCameraManager::getCompletedRequests()
 	std::lock_guard guard(completedRequestsMutex_);
 	swap(v, completedRequests_);
 	return v;
+}
+
+bool PyCameraManager::hasEvents()
+{
+	struct pollfd pfd = {
+		.fd = eventFd_,
+		.events = POLLIN,
+		.revents = 0,
+	};
+
+	int ret = poll(&pfd, 1, 0);
+	if (ret == -1)
+		throw std::system_error(errno, std::generic_category());
+
+	return pfd.revents & POLLIN;
 }

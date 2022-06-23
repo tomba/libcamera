@@ -107,7 +107,8 @@ PYBIND11_MODULE(_libcamera, m)
 		.def_property_readonly("cameras", &PyCameraManager::getCameras)
 
 		.def_property_readonly("event_fd", &PyCameraManager::eventFd)
-		.def("get_ready_requests", &PyCameraManager::getReadyRequests);
+		.def("get_ready_requests", &PyCameraManager::getReadyRequests,
+		     py::arg("nonblocking") = false);
 
 	pyCamera
 		.def_property_readonly("id", &Camera::id)

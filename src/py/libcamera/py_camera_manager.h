@@ -23,7 +23,7 @@ public:
 
 	int eventFd() const { return eventFd_; }
 
-	std::vector<pybind11::object> getReadyRequests();
+	std::vector<pybind11::object> getReadyRequests(bool nonBlocking = false);
 
 	void handleRequestCompleted(Request *req);
 
@@ -36,4 +36,5 @@ private:
 	void readFd();
 	void pushRequest(Request *req);
 	std::vector<Request *> getCompletedRequests();
+	bool hasEvents();
 };
