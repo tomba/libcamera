@@ -158,6 +158,8 @@ void PyCameraManager::handleDisconnected(std::shared_ptr<Camera> cam)
 /* Note: Called from another thread */
 void PyCameraManager::handleCameraAdded(std::shared_ptr<Camera> cam)
 {
+	printf("PyCameraManager::handleCameraAdded: %s\n", cam->id().c_str());
+
 	CameraEvent ev(CameraEvent::EventType::CameraAdded);
 	ev.cam = cam;
 
@@ -168,6 +170,8 @@ void PyCameraManager::handleCameraAdded(std::shared_ptr<Camera> cam)
 /* Note: Called from another thread */
 void PyCameraManager::handleCameraRemoved(std::shared_ptr<Camera> cam)
 {
+	printf("PyCameraManager::handleCameraRemoved: %s\n", cam->id().c_str());
+
 	CameraEvent ev(CameraEvent::EventType::CameraRemoved);
 	ev.cam = cam;
 
@@ -263,6 +267,16 @@ void PyCameraManager::discardEvents()
 	}
 }
 
+static void handleCameraAddedFunc(std::shared_ptr<Camera> cam)
+{
+	printf("handleCameraAddedFunc: %s\n", cam->id().c_str());
+}
+
+static void handleCameraRemovedFunc(std::shared_ptr<Camera> cam)
+{
+	printf("handleCameraRemovedFunc: %s\n", cam->id().c_str());
+}
+
 std::function<void(std::shared_ptr<Camera>)> PyCameraManager::getCameraAdded() const
 {
 	return cameraAddedHandler_;
@@ -275,8 +289,10 @@ void PyCameraManager::setCameraAdded(std::function<void(std::shared_ptr<Camera>)
 
 	cameraAddedHandler_ = fun;
 
-	if (fun)
+	if (fun) {
+		cameraAdded.connect(handleCameraAddedFunc);
 		cameraAdded.connect(this, &PyCameraManager::handleCameraAdded);
+	}
 }
 
 std::function<void(std::shared_ptr<Camera>)> PyCameraManager::getCameraRemoved() const
@@ -291,8 +307,10 @@ void PyCameraManager::setCameraRemoved(std::function<void(std::shared_ptr<Camera
 
 	cameraRemovedHandler_ = fun;
 
-	if (fun)
+	if (fun) {
+		cameraRemoved.connect(handleCameraRemovedFunc);
 		cameraRemoved.connect(this, &PyCameraManager::handleCameraRemoved);
+	}
 }
 
 std::function<void(std::shared_ptr<Camera>, Request *)> PyCameraManager::getRequestCompleted(Camera *cam)
