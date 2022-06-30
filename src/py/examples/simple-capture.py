@@ -107,17 +107,22 @@ def main():
     sel.register(cm.event_fd, selectors.EVENT_READ)
 
     while frames_done < TOTAL_FRAMES:
-        # cm.get_ready_requests() does not block, so we use a Selector to wait
-        # for a camera event. Here we should almost always get a single
-        # Request, but in some cases there could be multiple or none.
+        # cm.get_events() does not block, so we use a Selector to wait for a
+        # camera event. Here we should almost always get a single request
+        # completion event, but in some cases there could be multiple ones,
+        # other events, or no events at all.
 
         events = sel.select()
         if not events:
             continue
 
-        reqs = cm.get_ready_requests()
+        for ev in cm.get_events():
+            # We are only interested in RequestCompleted events
+            if ev.type != libcam.Event.Type.RequestCompleted:
+                continue
 
-        for req in reqs:
+            req = ev.request
+
             frames_done += 1
 
             buffers = req.buffers
