@@ -83,16 +83,17 @@ class CaptureContext:
     camera_contexts: list[CameraCaptureContext] = []
 
     def handle_camera_event(self):
-        # cm.get_ready_requests() returns the ready requests, which in our case
-        # should almost always return a single Request, but in some cases there
-        # could be multiple or none.
+        # cm.get_events() returns the ready events, which in our case should
+        # almost always be a single RequestCompleted event, but in some cases
+        # there could be multiple ones, other events, or no events at all.
 
-        reqs = self.cm.get_ready_requests()
+        for ev in self.cm.get_events():
+            # We are only interested in RequestCompleted events
+            if ev.type != libcam.Event.Type.RequestCompleted:
+                continue
 
-        # Process the captured frames
-
-        for req in reqs:
-            self.handle_request(req)
+            # Process the captured frames
+            self.handle_request(ev.request)
 
         return True
 
