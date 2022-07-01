@@ -409,9 +409,9 @@ class SimpleCaptureMethods(CameraTesterBase):
         while running:
             events = sel.select()
             for _ in events:
-                ready_reqs = cm.get_ready_requests()
-
-                reqs += ready_reqs
+                for ev in cm.get_events():
+                    self.assertEqual(ev.type, libcam.Event.Type.RequestCompleted)
+                    reqs.append(ev.request)
 
                 if len(reqs) == num_bufs:
                     running = False
