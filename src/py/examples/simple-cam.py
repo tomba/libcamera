@@ -19,16 +19,17 @@ TIMEOUT_SEC = 3
 
 
 def handle_camera_event(cm):
-    # cm.get_ready_requests() returns the ready requests, which in our case
-    # should almost always return a single Request, but in some cases there
-    # could be multiple or none.
+    # cm.get_events() returns the ready events, which in our case should
+    # almost always be a single RequestCompleted event, but in some cases
+    # there could be multiple ones, other events, or no events at all.
 
-    reqs = cm.get_ready_requests()
+    for ev in cm.get_events():
+        # We are only interested in RequestCompleted events
+        if ev.type != libcam.Event.Type.RequestCompleted:
+            continue
 
-    # Process the captured frames
-
-    for req in reqs:
-        process_request(req)
+        # Process the captured frames
+        process_request(ev.request)
 
 
 def process_request(request):
@@ -304,7 +305,7 @@ def main():
     # CameraManager and an event will be raised using eventfd.
     #
     # The list of completed Requests can be retrieved with
-    # CameraManager.get_ready_requests(), which will also clear the list in the
+    # CameraManager.get_events(), which will also clear the list in the
     # CameraManager.
     #
     # The eventfd can be retrieved from CameraManager.event_fd, and the fd can
