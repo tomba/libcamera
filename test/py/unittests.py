@@ -4,11 +4,9 @@
 # Copyright (C) 2022, Tomi Valkeinen <tomi.valkeinen@ideasonboard.com>
 
 from collections import defaultdict
-import errno
 import gc
 import libcamera as libcam
 import selectors
-import time
 import typing
 import unittest
 import weakref
@@ -406,7 +404,7 @@ class SimpleCaptureMethods(CameraTesterBase):
         running = True
         while running:
             events = sel.select()
-            for key, _ in events:
+            for _ in events:
                 for ev in cm.get_events():
                     self.assertEqual(ev.type, libcam.Event.Type.RequestCompleted)
                     reqs.append(ev.request)
