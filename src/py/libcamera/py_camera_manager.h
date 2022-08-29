@@ -68,7 +68,6 @@ public:
 
 	int eventFd() const { return eventFd_.get(); }
 
-	std::vector<pybind11::object> getReadyRequests(); /* DEPRECATED */
 	std::vector<PyCameraEvent> getPyEvents();
 	std::vector<PyCameraEvent> getPyCameraEvents(std::shared_ptr<Camera> camera);
 

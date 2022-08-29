@@ -126,9 +126,6 @@ PYBIND11_MODULE(_libcamera, m)
 
 		.def_property_readonly("event_fd", &PyCameraManager::eventFd)
 
-		/* DEPRECATED */
-		.def("get_ready_requests", &PyCameraManager::getReadyRequests)
-
 		.def("get_events", &PyCameraManager::getPyEvents)
 
 		.def_readwrite("buffer_completed_active", &PyCameraManager::bufferCompletedEventActive_);

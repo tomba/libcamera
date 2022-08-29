@@ -103,30 +103,6 @@ PyCameraEvent PyCameraManager::convertEvent(const CameraEvent &event)
 	return pyevent;
 }
 
-/* DEPRECATED */
-std::vector<py::object> PyCameraManager::getReadyRequests()
-{
-	int ret = readFd();
-
-	if (ret == -EAGAIN)
-		return std::vector<py::object>();
-
-	if (ret != 0)
-		throw std::system_error(-ret, std::generic_category());
-
-	std::vector<py::object> py_reqs;
-
-	for (const auto &ev : getEvents()) {
-		if (ev.type_ != CameraEventType::RequestCompleted)
-			continue;
-
-		PyCameraEvent pyev = convertEvent(ev);
-		py_reqs.push_back(pyev.request_);
-	}
-
-	return py_reqs;
-}
-
 std::vector<PyCameraEvent> PyCameraManager::getPyEvents()
 {
 	int ret = readFd();
