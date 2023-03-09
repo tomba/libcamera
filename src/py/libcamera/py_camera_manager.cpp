@@ -182,9 +182,6 @@ std::vector<PyCameraEvent> PyCameraManager::getPyCameraEvents(std::shared_ptr<Ca
 /* Note: Called from another thread */
 void PyCameraManager::handleBufferCompleted(std::shared_ptr<Camera> cam, Request *req, FrameBuffer *fb)
 {
-	if (!bufferCompletedEventActive_)
-		return;
-
 	CameraEvent ev(CameraEventType::BufferCompleted, cam, req, fb);
 
 	pushEvent(ev);

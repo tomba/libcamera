@@ -48,6 +48,57 @@ void init_py_geometry(py::module &m);
 void init_py_properties_generated(py::module &m);
 void init_py_transform(py::module &m);
 
+static bool py_camera_get_event_flag(std::shared_ptr<Camera> camera, CameraEventType event_type)
+{
+	const uint32_t evbit = 1 << (uint32_t)event_type;
+
+	auto cm = gCameraManager.lock();
+	ASSERT(cm);
+
+	auto it = cm->camera_event_masks_.find(camera);
+
+	uint32_t mask = 0;
+
+	if (it != cm->camera_event_masks_.end())
+		mask = it->second;
+
+	return !!(mask & evbit);
+}
+
+static void py_camera_set_event_flag(std::shared_ptr<Camera> camera, CameraEventType event_type, bool value)
+{
+	const uint32_t evbit = 1 << (uint32_t)event_type;
+
+	auto cm = gCameraManager.lock();
+	ASSERT(cm);
+
+	uint32_t mask = 0;
+
+	auto it = cm->camera_event_masks_.find(camera);
+	if (it != cm->camera_event_masks_.end())
+		mask = it->second;
+
+	bool old_val = !!(mask & evbit);
+
+	if (old_val == value)
+		return;
+
+	if (value)
+		mask |= evbit;
+	else
+		mask &= ~evbit;
+
+	cm->camera_event_masks_[camera] = mask;
+
+	if (value) {
+		camera->requestCompleted.connect(camera.get(), [cm, camera](Request *req) {
+			cm->handleRequestCompleted(camera, req);
+		});
+	} else {
+		camera->requestCompleted.disconnect();
+	}
+}
+
 PYBIND11_MODULE(_libcamera, m)
 {
 	init_py_enums(m);
@@ -121,6 +172,10 @@ PYBIND11_MODULE(_libcamera, m)
 			if (!cm) {
 				cm = std::make_shared<PyCameraManager>();
 				gCameraManager = cm;
+
+				/* Always enable RequestCompleted for all cameras */
+				for (auto cam : cm->cameraManager_->cameras())
+					py_camera_set_event_flag(cam, CameraEventType::RequestCompleted, true);
 			}
 
 			return cm;
@@ -132,12 +187,47 @@ PYBIND11_MODULE(_libcamera, m)
 
 		.def_property_readonly("event_fd", &PyCameraManager::eventFd)
 
-		.def("get_events", &PyCameraManager::getPyEvents)
-
-		.def_readwrite("buffer_completed_active", &PyCameraManager::bufferCompletedEventActive_);
+		.def("get_events", &PyCameraManager::getPyEvents);
 
 	pyCamera
 		.def_property_readonly("id", &Camera::id)
+
+		.def_property(
+			"requestCompletedEnabled",
+			[](Camera &self) {
+				return py_camera_get_event_flag(self.shared_from_this(),
+								CameraEventType::RequestCompleted);
+			},
+			[](Camera &self, bool val) {
+				py_camera_set_event_flag(self.shared_from_this(),
+							 CameraEventType::RequestCompleted,
+							 val);
+			})
+
+		.def_property(
+			"bufferCompletedEnabled",
+			[](Camera &self) {
+				return py_camera_get_event_flag(self.shared_from_this(),
+								CameraEventType::BufferCompleted);
+			},
+			[](Camera &self, bool val) {
+				py_camera_set_event_flag(self.shared_from_this(),
+							 CameraEventType::BufferCompleted,
+							 val);
+			})
+
+		.def_property(
+			"disconnectEnabled",
+			[](Camera &self) {
+				return py_camera_get_event_flag(self.shared_from_this(),
+								CameraEventType::Disconnect);
+			},
+			[](Camera &self, bool val) {
+				py_camera_set_event_flag(self.shared_from_this(),
+							 CameraEventType::Disconnect,
+							 val);
+			})
+
 		.def("acquire", [](Camera &self) {
 			int ret = self.acquire();
 			if (ret)
@@ -157,18 +247,6 @@ PYBIND11_MODULE(_libcamera, m)
 			auto cm = gCameraManager.lock();
 			ASSERT(cm);
 
-			self.requestCompleted.connect(&self, [cm, camera=self.shared_from_this()](Request *req) {
-				cm->handleRequestCompleted(camera, req);
-			});
-
-			self.bufferCompleted.connect(&self, [cm, camera=self.shared_from_this()](Request *req, FrameBuffer *fb) {
-				cm->handleBufferCompleted(camera, req, fb);
-			});
-
-			self.disconnected.connect(&self, [cm, camera=self.shared_from_this()]() {
-				cm->handleDisconnected(camera);
-			});
-
 			ControlList controlList(self.controls());
 
 			for (const auto& [id, obj]: controls) {
@@ -178,7 +256,6 @@ PYBIND11_MODULE(_libcamera, m)
 
 			int ret = self.start(&controlList);
 			if (ret) {
-				self.requestCompleted.disconnect();
 				throw std::system_error(-ret, std::generic_category(),
 							"Failed to start camera");
 			}
@@ -186,10 +263,6 @@ PYBIND11_MODULE(_libcamera, m)
 
 		.def("stop", [](Camera &self) {
 			int ret = self.stop();
-
-			self.requestCompleted.disconnect();
-			self.bufferCompleted.disconnect();
-			self.disconnected.disconnect();
 
 			auto cm = gCameraManager.lock();
 			ASSERT(cm);

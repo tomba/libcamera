@@ -77,10 +77,11 @@ public:
 	void handleCameraAdded(std::shared_ptr<Camera> cam);
 	void handleCameraRemoved(std::shared_ptr<Camera> cam);
 
-	bool bufferCompletedEventActive_ = false;
+	uint32_t event_mask_;
+	std::map<std::shared_ptr<Camera>, uint32_t> camera_event_masks_;
+	std::unique_ptr<CameraManager> cameraManager_;
 
 private:
-	std::unique_ptr<CameraManager> cameraManager_;
 
 	UniqueFD eventFd_;
 	libcamera::Mutex eventsMutex_;
