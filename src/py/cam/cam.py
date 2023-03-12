@@ -393,6 +393,7 @@ def main():
     parser.add_argument('--list-controls', action='store_true', help='List cameras controls')
     parser.add_argument('-I', '--info', action='store_true', help='Display information about stream(s)')
     parser.add_argument('-R', '--renderer', default='null', help='Renderer (null, kms, qt, qtgl)')
+    parser.add_argument('--rargs', default='', help='Arguments passed to the renderer (pass --help to see help)')
 
     # per camera options
     parser.add_argument('-C', '--capture', nargs='?', type=int, const=1000000, action=CustomAction, help='Capture until interrupted by user or until CAPTURE frames captured')
@@ -457,6 +458,9 @@ def main():
         elif args.renderer == 'qtgl':
             import cam_qtgl
             renderer = cam_qtgl.QtRenderer(state)
+        elif args.renderer == 'tx':
+            import cam_tx
+            renderer = cam_tx.TxRenderer(state, args.rargs)
         else:
             print('Bad renderer', args.renderer)
             return -1
