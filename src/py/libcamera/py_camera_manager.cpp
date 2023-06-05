@@ -114,7 +114,7 @@ std::vector<PyCameraEvent> PyCameraManager::getPyEvents()
 {
 	int ret = readFd();
 
-	if (ret == EAGAIN) {
+	if (ret == -EAGAIN) {
 		LOG(Python, Debug) << "No events";
 		return {};
 	}
