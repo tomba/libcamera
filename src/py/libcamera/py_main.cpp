@@ -226,10 +226,9 @@ PYBIND11_MODULE(_libcamera, m)
 			}
 
 			int ret = self.start(&controlList);
-			if (ret) {
+			if (ret)
 				throw std::system_error(-ret, std::generic_category(),
 							"Failed to start camera");
-			}
 		}, py::arg("controls") = std::unordered_map<const ControlId *, py::object>())
 
 		.def("stop", [](Camera &self) {
