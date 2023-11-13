@@ -266,7 +266,7 @@ endif
 # Create a symlink from the build root to the source root. This is used when
 # running libcamera from the build directory to locate resources in the source
 # directory (such as IPA configuration files).
-run_command('ln', '-fsT', meson.project_source_root(), meson.project_build_root() / 'source',
+run_command('ln', '-fsT', '..', meson.project_build_root() / 'source',
             check : true)
 
 configure_file(output : 'config.h', configuration : config_h)
