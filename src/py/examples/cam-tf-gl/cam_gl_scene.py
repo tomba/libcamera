@@ -16,29 +16,6 @@ from cam_egl import EglSurface
 from cam_gl_types import MyBuf
 from OpenGL import GL as gl
 
-@contextmanager
-def timer():
-    '''Context manager for timing code blocks.
-
-    Usage:
-        with timer() as t:
-            # code to time
-        print(f'Execution took {t.elapsed} seconds')
-    '''
-    class Timer:
-        def __init__(self):
-            self.start = None
-            self.end = None
-            self.elapsed = None
-
-    timer_obj = Timer()
-    timer_obj.start = time.monotonic()
-    try:
-        yield timer_obj
-    finally:
-        timer_obj.end = time.monotonic()
-        timer_obj.elapsed = timer_obj.end - timer_obj.start
-
 class GLScene:
     def __init__(self):
         self.width = 0
