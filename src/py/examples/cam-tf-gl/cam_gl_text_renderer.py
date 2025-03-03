@@ -251,14 +251,3 @@ class TextRenderer:
             scale: Optional scale factor (default: 1.0)
         """
         self.render_texts([(text, x, y, scale)])
-
-    def cleanup(self):
-        if self.vbo:
-            gl.glDeleteBuffers(1, [self.vbo])
-            self.vbo = None
-        if self.texture_id:
-            gl.glDeleteTextures([self.texture_id])
-            self.texture_id = None
-        if self.shader:
-            gl.glDeleteProgram(self.shader)
-            self.shader = None

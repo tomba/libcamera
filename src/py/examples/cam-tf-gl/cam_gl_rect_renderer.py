@@ -111,11 +111,3 @@ class RectangleRenderer:
         gl.glDisableVertexAttribArray(position_loc)
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
         gl.glUseProgram(0)
-
-    def cleanup(self):
-        if self.vbo:
-            gl.glDeleteBuffers(1, [self.vbo])
-            self.vbo = None
-        if self.shader:
-            gl.glDeleteProgram(self.shader)
-            self.shader = None

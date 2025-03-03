@@ -161,28 +161,3 @@ class YUYV_Renderer:
         gl.glUniform1i(self.y_texture_loc, 0)
 
         gl.glDrawElements(gl.GL_TRIANGLES, 6, gl.GL_UNSIGNED_SHORT, None)
-
-        return True
-
-    def cleanup(self):
-        if self.program:
-            gl.glDeleteProgram(self.program)
-            self.program = None
-
-        if self.vbo:
-            gl.glDeleteBuffers(1, [self.vbo])
-            self.vbo = None
-
-        if self.ibo:
-            gl.glDeleteBuffers(1, [self.ibo])
-            self.ibo = None
-
-        for buffer_id in self.input_textures:
-            if self.input_textures[buffer_id]:
-                gl.glDeleteTextures(1, [self.input_textures[buffer_id]])
-
-        # Clean up all EGLImages at once
-        dmabuf_importer.cleanup(self.egl_display)
-
-        self.input_textures.clear()
-        self.initialized = False

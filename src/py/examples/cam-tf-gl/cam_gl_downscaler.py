@@ -154,98 +154,50 @@ class TextureDownscaler:
         except Exception:
             return False
 
-    def downscale(self, dmabuf_fd, dst_data=None):
-        if not self.initialized:
-            return False
+    def downscale(self, dmabuf_fd, dst_data):
+        # Using our utility to import the dmabuf
+        egl_display = egl.eglGetCurrentDisplay()
 
-        try:
-            # Using our utility to import the dmabuf
-            egl_display = egl.eglGetCurrentDisplay()
-
-            # First clean up any previous EGL image if it exists
-            if self.egl_image:
-                dmabuf_importer.destroy_image(egl_display, egl_image=self.egl_image)
-
-            # Import new dmabuf
-            self.egl_image = dmabuf_importer.import_dmabuf(
-                egl_display, self.src_texture, dmabuf_fd,
-                self.src_width, self.src_height
-            )
-
-            if not self.egl_image:
-                return False
-
-            gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.fbo)
-            gl.glViewport(0, 0, self.dst_width, self.dst_height)
-            gl.glClearColor(0.0, 0.0, 0.0, 1.0)
-            gl.glClear(gl.GL_COLOR_BUFFER_BIT)
-            gl.glUseProgram(self.program)
-
-            gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vbo)
-            gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.ibo)
-
-            stride = 4 * 4
-
-            gl.glEnableVertexAttribArray(self.position_loc)
-            gl.glVertexAttribPointer(self.position_loc, 2, gl.GL_FLOAT, gl.GL_FALSE,
-                                   stride, ctypes.c_void_p(0))
-
-            gl.glEnableVertexAttribArray(self.texcoord_loc)
-            gl.glVertexAttribPointer(self.texcoord_loc, 2, gl.GL_FLOAT, gl.GL_FALSE,
-                                   stride, ctypes.c_void_p(8))
-
-            gl.glActiveTexture(gl.GL_TEXTURE0)
-            gl.glBindTexture(GL_TEXTURE_EXTERNAL_OES, self.src_texture)
-            gl.glUniform1i(self.texture_loc, 0)
-
-            gl.glDrawElements(gl.GL_TRIANGLES, 6, gl.GL_UNSIGNED_SHORT, None)
-
-            if dst_data is None:
-                result = np.zeros((self.dst_height, self.dst_width, 4), dtype=np.uint8)
-                gl.glReadPixels(0, 0, self.dst_width, self.dst_height,
-                             gl.GL_RGBA, gl.GL_UNSIGNED_BYTE, result)
-                result = np.flipud(result)
-                return result
-            else:
-                gl.glReadPixels(0, 0, self.dst_width, self.dst_height,
-                             gl.GL_RGBA, gl.GL_UNSIGNED_BYTE, dst_data)
-                return True
-
-        except Exception:
-            return False
-        finally:
-            gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
-            gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
-            gl.glUseProgram(0)
-
-    def cleanup(self):
-        if self.program:
-            gl.glDeleteProgram(self.program)
-            self.program = None
-
-        if self.vbo:
-            gl.glDeleteBuffers(1, [self.vbo])
-            self.vbo = None
-
-        if self.ibo:
-            gl.glDeleteBuffers(1, [self.ibo])
-            self.ibo = None
-
-        if self.fbo:
-            gl.glDeleteFramebuffers(1, [self.fbo])
-            self.fbo = None
-
-        if self.src_texture:
-            gl.glDeleteTextures(1, [self.src_texture])
-            self.src_texture = None
-
-        if self.dst_texture:
-            gl.glDeleteTextures(1, [self.dst_texture])
-            self.dst_texture = None
-
+        # First clean up any previous EGL image if it exists
         if self.egl_image:
-            egl_display = egl.eglGetCurrentDisplay()
             dmabuf_importer.destroy_image(egl_display, egl_image=self.egl_image)
-            self.egl_image = None
 
-        self.initialized = False
+        # Import new dmabuf
+        self.egl_image = dmabuf_importer.import_dmabuf(
+            egl_display, self.src_texture, dmabuf_fd,
+            self.src_width, self.src_height
+        )
+
+        if not self.egl_image:
+            return False
+
+        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.fbo)
+        gl.glViewport(0, 0, self.dst_width, self.dst_height)
+        gl.glClearColor(0.0, 0.0, 0.0, 1.0)
+        gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+        gl.glUseProgram(self.program)
+
+        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vbo)
+        gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.ibo)
+
+        stride = 4 * 4
+
+        gl.glEnableVertexAttribArray(self.position_loc)
+        gl.glVertexAttribPointer(self.position_loc, 2, gl.GL_FLOAT, gl.GL_FALSE,
+                                stride, ctypes.c_void_p(0))
+
+        gl.glEnableVertexAttribArray(self.texcoord_loc)
+        gl.glVertexAttribPointer(self.texcoord_loc, 2, gl.GL_FLOAT, gl.GL_FALSE,
+                                stride, ctypes.c_void_p(8))
+
+        gl.glActiveTexture(gl.GL_TEXTURE0)
+        gl.glBindTexture(GL_TEXTURE_EXTERNAL_OES, self.src_texture)
+        gl.glUniform1i(self.texture_loc, 0)
+
+        gl.glDrawElements(gl.GL_TRIANGLES, 6, gl.GL_UNSIGNED_SHORT, None)
+
+
+        gl.glReadPixels(0, 0, self.dst_width, self.dst_height,
+                        gl.GL_RGBA, gl.GL_UNSIGNED_BYTE, dst_data)
+
+        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)

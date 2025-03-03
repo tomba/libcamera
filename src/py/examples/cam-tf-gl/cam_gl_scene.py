@@ -1,6 +1,8 @@
 ENABLE_TF = False
 
+from contextlib import contextmanager
 import os
+import time
 import numpy as np
 
 if ENABLE_TF:
@@ -12,6 +14,30 @@ from cam_gl_rect_renderer import RectangleRenderer
 from cam_gl_text_renderer import TextRenderer
 from cam_egl import EglSurface
 from cam_gl_types import MyBuf
+from OpenGL import GL as gl
+
+@contextmanager
+def timer():
+    '''Context manager for timing code blocks.
+
+    Usage:
+        with timer() as t:
+            # code to time
+        print(f'Execution took {t.elapsed} seconds')
+    '''
+    class Timer:
+        def __init__(self):
+            self.start = None
+            self.end = None
+            self.elapsed = None
+
+    timer_obj = Timer()
+    timer_obj.start = time.monotonic()
+    try:
+        yield timer_obj
+    finally:
+        timer_obj.end = time.monotonic()
+        timer_obj.elapsed = timer_obj.end - timer_obj.start
 
 class GLScene:
     def __init__(self):
@@ -76,13 +102,26 @@ class GLScene:
         }
 
     def render(self, mybuf):
-        self.downscale(mybuf)
+        t0 = time.monotonic()
 
-        # XXX Apparently we can't ret RGB from the GPU, so we
-        # have to drop the A here.
+        # Render full screen RGB from the YUYV source
+        self.yuyv_renderer.draw(mybuf.idx)
+
+        # Render downscaled RGB from the YUYV source
+        self.downscaler.downscale(mybuf.buffer.planes[0].fd,
+                                  dst_data=self.downscale_buf)
+
+        # XXX Apparently we can't get RGB from the GPU, only RGBA,
+        # so we have to drop the A here.
         rgb_array = self.downscale_buf[:, :, 0:3]
+        # Swap R and B channels (needed?)
         rgb_array[:, :, [0, 2]] = rgb_array[:, :, [2, 0]]
 
+        #from PIL import Image
+        #im = Image.fromarray(rgb_array)
+        #im.save("downscaled.png")
+
+        # Run inference
         sconfig = mybuf.stream.configuration
 
         if ENABLE_TF:
@@ -94,33 +133,26 @@ class GLScene:
                 ((300, 100), (500, 400), "Test2"),
             ]
 
-        self.yuyv_renderer.draw(mybuf.idx)
+            for i in range(20):
+                boxes.append(((i*20, i*20), (i*20+100, i*20+100), f"Test{i}"))
 
+
+        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
+        gl.glViewport(0, 0, self.width, self.height)
+
+        # Draw rectangles
         rectangles = [trip[0:2] for trip in boxes]
-
-        #rectangles = [
-        #    ((0, 0), (640*2-10, 100)),
-        #    #((150, 50), (250, 200))
-        #]
         self.rect_renderer.render(rectangles)
 
+        # Draw texts
         texts = [(trip[2], trip[0][0], trip[0][1]) for trip in boxes]
-
-#        texts = [
-#            ("Label 1", 100, 80),          # Default scale (1.0)
-#            ("Label 2", 300, 130, 1.5),    # Larger scale (1.5)
-#            ("Small text", 200, 250, 0.8)  # Smaller scale (0.8)
-#        ]
-
         self.text_renderer.render_texts(texts)
 
-    def downscale(self, mybuf: MyBuf):
-        self.downscaler.downscale(mybuf.buffer.planes[0].fd,
-                                           dst_data=self.downscale_buf)
+        gl.glFinish()
 
-        #from PIL import Image
-        #im = Image.fromarray(self.downscale_buf)
-        #im.save("downscaled.png")
+        t0 = time.monotonic() - t0
+        print(f'{t0 * 1000:4.2f}')
+
 
 def InferenceTensorFlow(image, tf_data, scale_width, scale_height):
     labels = tf_data['labels']
