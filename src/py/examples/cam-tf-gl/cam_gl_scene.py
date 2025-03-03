@@ -102,8 +102,6 @@ class GLScene:
         }
 
     def render(self, mybuf):
-        t0 = time.monotonic()
-
         # Render full screen RGB from the YUYV source
         self.yuyv_renderer.draw(mybuf.idx)
 
@@ -133,7 +131,7 @@ class GLScene:
                 ((300, 100), (500, 400), "Test2"),
             ]
 
-            for i in range(20):
+            for i in range(10):
                 boxes.append(((i*20, i*20), (i*20+100, i*20+100), f"Test{i}"))
 
 
@@ -148,10 +146,6 @@ class GLScene:
         texts = [(trip[2], trip[0][0], trip[0][1]) for trip in boxes]
         self.text_renderer.render_texts(texts)
 
-        gl.glFinish()
-
-        t0 = time.monotonic() - t0
-        print(f'{t0 * 1000:4.2f}')
 
 
 def InferenceTensorFlow(image, tf_data, scale_width, scale_height):

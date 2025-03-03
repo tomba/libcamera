@@ -72,12 +72,19 @@ class RectangleRenderer:
         # Get attribute location
         position_loc = gl.glGetAttribLocation(self.shader, 'a_position')
 
-        # Bind VBO
+        # Bind VBO and enable vertex attribute
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vbo)
         gl.glEnableVertexAttribArray(position_loc)
         gl.glVertexAttribPointer(position_loc, 2, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
 
-        for rect in rectangles:
+        # Calculate total number of vertices needed
+        total_vertices = len(rectangles) * 8  # 8 vertices per rectangle (4 lines)
+
+        # Create a single large vertex array for all rectangles
+        vertices = np.zeros(total_vertices * 2, dtype=np.float32)  # * 2 for x,y coordinates
+
+        # Fill the vertex array
+        for i, rect in enumerate(rectangles):
             top_left = rect[0]
             bottom_right = rect[1]
 
@@ -85,27 +92,26 @@ class RectangleRenderer:
             x1, y1 = top_left
             x2, y2 = bottom_right
 
-            # Create vertex data for lines (8 vertices for 4 lines)
-            vertices = np.array([
+            # Calculate offset into the array
+            offset = i * 16  # 16 = 8 vertices * 2 components (x,y)
+
+            # Add rectangle vertices (8 vertices for 4 lines)
+            vertices[offset:offset+16] = [
                 # Top line
-                x1, y1,
-                x2, y1,
+                x1, y1, x2, y1,
                 # Right line
-                x2, y1,
-                x2, y2,
+                x2, y1, x2, y2,
                 # Bottom line
-                x2, y2,
-                x1, y2,
+                x2, y2, x1, y2,
                 # Left line
-                x1, y2,
-                x1, y1
-            ], dtype=np.float32)
+                x1, y2, x1, y1
+            ]
 
-            # Upload data to GPU
-            gl.glBufferData(gl.GL_ARRAY_BUFFER, vertices.nbytes, vertices, gl.GL_STREAM_DRAW)
+        # Upload all vertex data at once
+        gl.glBufferData(gl.GL_ARRAY_BUFFER, vertices.nbytes, vertices, gl.GL_STREAM_DRAW)
 
-            # Draw lines
-            gl.glDrawArrays(gl.GL_LINES, 0, 8)
+        # Draw all rectangles in a single draw call
+        gl.glDrawArrays(gl.GL_LINES, 0, total_vertices)
 
         # Clean up
         gl.glDisableVertexAttribArray(position_loc)
