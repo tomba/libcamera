@@ -92,7 +92,17 @@ class KMSState:
     def queue_new_frame(self, mybuf: MyBuf):
         self.in_queue.append(mybuf)
         if not self.next_fb:
-            self.handle_page_flip()
+            self.commit_frame()
+
+    def commit_frame(self):
+        assert not self.next_fb
+        assert len(self.in_queue) > 0
+
+        self.next_fb = self.in_queue.popleft()
+
+        ctx = kms.AtomicReq(self.card)
+        ctx.add(self.crtc.primary_plane, "FB_ID", self.next_fb.fb.id)
+        ctx.commit()
 
     def handle_page_flip(self):
         self.fps.tick()
@@ -110,11 +120,7 @@ class KMSState:
             self.next_fb = None
 
         if len(self.in_queue) > 0:
-            self.next_fb = self.in_queue.popleft()
-
-            ctx = kms.AtomicReq(self.card)
-            ctx.add(self.crtc.primary_plane, "FB_ID", self.next_fb.fb.id)
-            ctx.commit()
+            self.commit_frame()
 
     def readdrm(self):
         for ev in self.card.read_events():
@@ -140,7 +146,7 @@ class CamState:
                 cam = next((cam for cam in self.cm.cameras if camera_id in cam.id))
         except Exception:
             print(f'Failed to find camera "{camera_id}"')
-            return -1
+            raise
 
         cam.acquire()
 
