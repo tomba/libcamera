@@ -8,6 +8,9 @@ import libcamera as libcam
 import selectors
 import sys
 import time
+import threading
+import queue
+import os
 
 from collections import deque
 
@@ -41,6 +44,69 @@ class MyBuf:
     fb: kms.DmabufFramebuffer
     buffer: libcam.FrameBuffer
 
+class ThreadSafeCounter():
+    def __init__(self):
+        self._counter = 0
+        self._lock = threading.Lock()
+
+    def increment(self):
+        with self._lock:
+            self._counter += 1
+
+    def decrement(self):
+        with self._lock:
+            self._counter -= 1
+            assert self._counter >= 0
+
+    def value(self):
+        with self._lock:
+            return self._counter
+
+class ProcessHandler:
+    def __init__(self, kmsstate: KMSState):
+        self.kmsstate = kmsstate
+        self.process_fd = os.eventfd(0, os.EFD_SEMAPHORE | os.EFD_CLOEXEC)
+        self.process_exit = False
+        self.process_in_queue = queue.Queue()
+        self.process_out_queue = queue.Queue()
+        self.counter = ThreadSafeCounter()
+
+    def start(self):
+        self.thread = threading.Thread(target=self.process_main)
+        self.thread.start()
+
+    def join(self):
+        self.process_exit = True
+        self.thread.join()
+
+    # Returns True if the buffer was queued
+    def queue_buffer(self, mybuf: MyBuf):
+        if self.counter.value() > 1:
+            return False
+
+        self.counter.increment()
+        self.process_in_queue.put_nowait(mybuf)
+        return True
+
+    def process_main(self):
+        while not self.process_exit:
+            try:
+                mybuf: MyBuf = self.process_in_queue.get(block=True, timeout=0.5)
+            except queue.Empty:
+                continue
+
+            # Do some processing
+            time.sleep(0.043)
+
+            self.counter.decrement()
+            self.process_out_queue.put_nowait(mybuf)
+            os.eventfd_write(self.process_fd, 1)
+
+    def handle_process_event(self):
+        os.eventfd_read(self.process_fd)
+        mybuf: MyBuf = self.process_out_queue.get_nowait()
+        self.kmsstate.queue_new_frame(mybuf)
+        return False
 
 class KMSState:
     def __init__(self, mybufs: list[MyBuf], queue_buf):
@@ -162,6 +228,8 @@ class CamState:
             w, h = [int(v) for v in size_str.split("x")]
             stream_config.size = libcam.Size(w, h)
 
+        stream_config.buffer_count = 5
+
         cam_config.validate()
 
         cam.configure(cam_config)
@@ -187,9 +255,10 @@ class CamState:
 
         self.cam.queue_request(req)
 
-    def setup_hack(self, mybufs: list[MyBuf], kmsstate: KMSState):
+    def setup_hack(self, mybufs: list[MyBuf], kmsstate: KMSState, process_handler: ProcessHandler):
         self.mybufs = mybufs
         self.kmsstate = kmsstate
+        self.process_handler = process_handler
 
     def handle_req(self):
         self.cam_fps.tick()
@@ -204,7 +273,8 @@ class CamState:
             idx = req.cookie
             mybuf = self.mybufs[idx]
 
-            self.kmsstate.queue_new_frame(mybuf)
+            if not self.process_handler.queue_buffer(mybuf):
+                self.add_req(mybuf)
 
 
 def main():
@@ -247,7 +317,9 @@ def main():
     # Give the first buffer to kms
     kmsstate.setup(mybufs[0])
 
-    camstate.setup_hack(mybufs, kmsstate)
+    process_handler = ProcessHandler(kmsstate)
+
+    camstate.setup_hack(mybufs, kmsstate, process_handler)
 
     # Start camera. Need to start it before we can queue buffers
     camstate.cam.start()
@@ -261,10 +333,13 @@ def main():
         print("Exiting...")
         return True
 
+    process_handler.start()
+
     sel = selectors.DefaultSelector()
     sel.register(camstate.cm.event_fd, selectors.EVENT_READ, camstate.handle_req)
     sel.register(kmsstate.card.fd, selectors.EVENT_READ, kmsstate.readdrm)
     sel.register(sys.stdin, selectors.EVENT_READ, handle_key_event)
+    sel.register(process_handler.process_fd, selectors.EVENT_READ, process_handler.handle_process_event)
 
     running = True
 
@@ -275,6 +350,8 @@ def main():
             if key.data():
                 print("exit")
                 running = False
+
+    process_handler.join()
 
     camstate.cam.stop()
     camstate.cam.release()
